@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "renance-dt"
+version = "3.0.0"
+description = "Renance DevTools - One command to rule them all"
+authors = [{name = "Renance", email = "hello@renance.dev"}]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+dependencies = [
+    "click>=8.1.0",
+    "colorama>=0.4.6",
+    "requests>=2.31.0",
+    "qrcode[pil]>=7.4.0",
+    "pillow>=10.0.0",
+    "psutil>=5.9.0",
+    "speedtest-cli>=2.1.3",
+    "mss>=9.0.1",
+    "pyjokes>=0.6.0"
+]
+
+[project.scripts]
+dt = "dt_cli.cli:cli"

@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: dt-cli
+Version: 2.0.0
+Summary: Renance DevTools - One command to rule them all
+Author-email: Renance <hello@renance.dev>
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.1.0
+Requires-Dist: colorama>=0.4.6
+Requires-Dist: requests>=2.31.0
+Requires-Dist: qrcode[pil]>=7.4.0
+Requires-Dist: pillow>=10.0.0
+Requires-Dist: psutil>=5.9.0
+
+# dt-cli
+Renance DevTools - One command to rule them all. v2.0
