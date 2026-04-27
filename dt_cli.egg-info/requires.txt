@@ -1,0 +1,6 @@
+click>=8.1.0
+colorama>=0.4.6
+requests>=2.31.0
+qrcode[pil]>=7.4.0
+pillow>=10.0.0
+psutil>=5.9.0
