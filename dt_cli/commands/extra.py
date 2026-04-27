@@ -110,3 +110,62 @@ register('dirname', 'File dirname', lambda a: os.path.dirname(a[0]))
 register('exists', 'File exists?', lambda a: str(os.path.exists(a[0])))
 register('isdir', 'Is directory?', lambda a: str(os.path.isdir(a[0])))
 register('isfile', 'Is file?', lambda a: str(os.path.isfile(a[0])))
+
+# FINANCE
+register('mortgage', 'Mortgage Calc (P, r, n)', lambda a: f"Monthly: {(float(a[0])*(float(a[1])/100/12)*(1+float(a[1])/100/12)**float(a[2]))/((1+float(a[1])/100/12)**float(a[2])-1):.2f}")
+register('tip', 'Tip Calc (Total, %)', lambda a: f"Tip: {float(a[0])*(float(a[1])/100):.2f}")
+register('tax', 'Tax Calc (Total, %)', lambda a: f"Total: {float(a[0])*(1+float(a[1])/100):.2f}")
+
+# DEV UTILS
+register('lorem', 'Lorem Ipsum (Words)', lambda a: ' '.join(['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipiscing', 'elit']*int(a[0] if a else 5))[:int(a[0] if a else 50)])
+register('hex_color', 'Random Hex Color', lambda a: f"#{random.randint(0, 0xFFFFFF):06x}")
+register('rgb_color', 'Random RGB Color', lambda a: f"rgb({random.randint(0,255)},{random.randint(0,255)},{random.randint(0,255)})")
+register('json_mock', 'Dummy JSON', lambda a: '{"id": 1, "name": "Test", "status": "active"}')
+register('base64_img', 'B64 Placeholder', lambda a: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==")
+register('port_check', 'Port Check (Host, Port)', lambda a: "Open" if subprocess.run(f"powershell Test-NetConnection {a[0]} -Port {a[1]}", shell=True, capture_output=True).returncode == 0 else "Closed")
+
+# CONVERSION
+register('bin2dec', 'Binary to Decimal', lambda a: int(a[0], 2))
+register('dec2bin', 'Decimal to Binary', lambda a: bin(int(a[0])))
+register('hex2dec', 'Hex to Decimal', lambda a: int(a[0], 16))
+register('dec2hex', 'Decimal to Hex', lambda a: hex(int(a[0])))
+register('oct2dec', 'Octal to Decimal', lambda a: int(a[0], 8))
+register('dec2oct', 'Decimal to Octal', lambda a: oct(int(a[0])))
+register('kg2lb', 'KG to Lbs', lambda a: float(a[0]) * 2.20462)
+register('lb2kg', 'Lbs to KG', lambda a: float(a[0]) / 2.20462)
+register('m2ft', 'Meters to Feet', lambda a: float(a[0]) * 3.28084)
+register('ft2m', 'Feet to Meters', lambda a: float(a[0]) / 3.28084)
+
+# TIME & DATE
+register('tz', 'Current Timezone', lambda a: __import__('time').tzname[0])
+register('timestamp', 'Current Timestamp', lambda a: int(__import__('time').time()))
+register('days_until', 'Days until YYYY-MM-DD', lambda a: (datetime.datetime.strptime(a[0], '%Y-%m-%d') - datetime.datetime.now()).days)
+register('week_num', 'Current Week Number', lambda a: datetime.datetime.now().isocalendar()[1])
+
+# ADVANCED SYSTEM (Wrappers)
+register('cpu_count', 'CPU Core Count', lambda a: os.cpu_count())
+register('env_var', 'Get Env Var', lambda a: os.environ.get(a[0], "Not Found"))
+register('path_list', 'System PATH List', lambda a: '\n'.join(os.environ.get('PATH', '').split(';')))
+register('mem_total', 'Total RAM', lambda a: f"{psutil.virtual_memory().total / (1024**3):.2f} GB")
+register('mem_avail', 'Available RAM', lambda a: f"{psutil.virtual_memory().available / (1024**3):.2f} GB")
+register('disk_io', 'Disk IO Stats', lambda a: str(psutil.disk_io_counters()))
+register('net_io', 'Net IO Stats', lambda a: str(psutil.net_io_counters()))
+
+# MORE FUN
+register('riddles', 'Random Riddle', lambda a: requests.get('https://riddles-api.vercel.app/random').json()['riddle'])
+register('advice', 'Random Advice', lambda a: requests.get('https://api.adviceslip.com/advice').json()['slip']['advice'])
+register('quote', 'Inspirational Quote', lambda a: requests.get('https://api.quotable.io/random').json()['content'])
+register('trump', 'Trump Quote', lambda a: requests.get('https://api.whatdoestrumpthink.com/api/v1/quotes/random').json()['message'])
+register('kanye', 'Kanye Quote', lambda a: requests.get('https://api.kanye.rest').json()['quote'])
+register('pokefact', 'Pokemon Fact (ID)', lambda a: requests.get(f'https://pokeapi.co/api/v2/pokemon/{a[0] if a else random.randint(1,151)}').json()['name'].title())
+register('coffee', 'Coffee Pic URL', lambda a: requests.get('https://aws.random.cat/meow').json()['file']) # Using cat api as coffee placeholder or similar
+register('name_gen', 'Random Name', lambda a: requests.get('https://randomuser.me/api/').json()['results'][0]['name']['first'] + " " + requests.get('https://randomuser.me/api/').json()['results'][0]['name']['last'])
+register('ip_loc', 'IP Geolocation', lambda a: requests.get(f'http://ip-api.com/json/{a[0] if a else ""}').json()['city'])
+
+# MISC
+register('md5_file', 'MD5 of file', lambda a: hashlib.md5(Path(a[0]).read_bytes()).hexdigest())
+register('sha1_file', 'SHA1 of file', lambda a: hashlib.sha1(Path(a[0]).read_bytes()).hexdigest())
+register('sha256_file', 'SHA256 of file', lambda a: hashlib.sha256(Path(a[0]).read_bytes()).hexdigest())
+register('count_files', 'File count in dir', lambda a: len([f for f in os.listdir(a[0] if a else '.') if os.path.isfile(os.path.join(a[0] if a else '.', f))]))
+register('count_dirs', 'Dir count in dir', lambda a: len([f for f in os.listdir(a[0] if a else '.') if os.path.isdir(os.path.join(a[0] if a else '.', f))]))
+register('uptime', 'System Uptime', lambda a: f"{(int(__import__('time').time()) - int(psutil.boot_time())) / 3600:.2f} hours")
