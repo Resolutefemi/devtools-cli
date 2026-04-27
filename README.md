@@ -104,4 +104,4 @@ Built and maintained by **Resolutefemi**. Contributions are welcome!
 
 ---
 **Renance DevTools** — Empowering developers, one command at a time.
-[hello@renance.dev](mailto:hello@renance.dev)
+
