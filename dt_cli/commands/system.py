@@ -148,26 +148,23 @@ def update():
 @click.command()
 def setup():
     """Add dt to system PATH automatically"""
-    import sys, os, subprocess, sysconfig, site
+    import sys, os, subprocess, site
     from pathlib import Path
 
-    # Get multiple possible scripts directories
+    # Get dynamic scripts directories
     paths_to_add = []
     
-    # 1. System-wide scripts
-    paths_to_add.append(sysconfig.get_path('scripts'))
+    # 1. Primary Scripts directory for the current interpreter
+    # This usually covers standard installations
+    scripts_dir = os.path.join(sys.prefix, "Scripts") if os.name == 'nt' else os.path.join(sys.prefix, "bin")
+    paths_to_add.append(scripts_dir)
     
-    # 2. User-specific scripts (where pip install --user goes)
+    # 2. User-specific scripts (where 'pip install --user' goes)
     if hasattr(site, 'getuserbase'):
         user_base = site.getuserbase()
-        if os.name == 'nt':
-            # Handle Microsoft Store / AppData pathing
-            paths_to_add.append(os.path.join(user_base, "Scripts"))
-            # Specifically for Python 3.11 Store version
-            paths_to_add.append(os.path.join(os.environ.get('APPDATA', ''), "Python", "Python311", "Scripts"))
-            paths_to_add.append(os.path.join(os.environ.get('LOCALAPPDATA', ''), "Packages", "PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0", "LocalCache", "local-packages", "Python311", "Scripts"))
-        else:
-            paths_to_add.append(os.path.join(user_base, "bin"))
+        if user_base:
+            user_scripts = os.path.join(user_base, "Scripts") if os.name == 'nt' else os.path.join(user_base, "bin")
+            paths_to_add.append(user_scripts)
 
     click.echo(f"{Colors.CYAN}Configuring system PATH...{Colors.RESET}")
     
@@ -175,27 +172,32 @@ def setup():
         try:
             import winreg
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_ALL_ACCESS)
-            current_path, _ = winreg.QueryValueEx(key, "Path")
+            try:
+                current_path, _ = winreg.QueryValueEx(key, "Path")
+            except FileNotFoundError:
+                current_path = ""
         except Exception:
             current_path = ""
 
         updated = False
-        new_path_entries = current_path.split(';')
+        new_path_entries = [p for p in current_path.split(';') if p]
         
-        for scripts_dir in paths_to_add:
-            if scripts_dir and os.path.exists(scripts_dir) and scripts_dir.lower() not in current_path.lower():
-                new_path_entries.append(scripts_dir)
-                updated = True
-                click.echo(f"{Colors.GREEN}✅ Found and adding: {scripts_dir}{Colors.RESET}")
+        for s_dir in paths_to_add:
+            if s_dir and os.path.exists(s_dir):
+                # Case-insensitive check for Windows
+                if not any(s_dir.lower() == existing.lower() for existing in new_path_entries):
+                    new_path_entries.append(s_dir)
+                    updated = True
+                    click.echo(f"{Colors.GREEN}✅ Found and adding: {s_dir}{Colors.RESET}")
 
         if updated:
             new_path = ";".join(new_path_entries)
+            # Use PowerShell to set the environment variable permanently for the user
             ps_cmd = f'[Environment]::SetEnvironmentVariable("Path", "{new_path}", "User")'
             subprocess.run(['powershell', '-Command', ps_cmd], check=True)
             click.echo(f"\n{Colors.YELLOW}👉 CRITICAL: You must RESTART your terminal (close and reopen) for this to work.{Colors.RESET}")
         else:
             click.echo(f"{Colors.GREEN}✅ All detected Python script paths are already in PATH.{Colors.RESET}")
-            click.echo(f"{Colors.YELLOW}If 'dt' still doesn't work, please restart your terminal or computer.{Colors.RESET}")
     else:
         # Unix/Linux/Termux
         home = Path.home()

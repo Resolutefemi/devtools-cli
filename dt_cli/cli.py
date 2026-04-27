@@ -1,11 +1,22 @@
-import click
+try:
+    import click
+except ImportError:
+
+    import sys
+    if "setup" not in sys.argv:
+        print("❌ Error: Renance DevTools dependencies not found.")
+        print("To fix this, please run the installer in the project folder:")
+        print("   Windows: install.bat")
+        print("   Unix:    bash install.sh")
+    sys.exit(1)
+
 from colorama import Fore, Style
 from pathlib import Path
 
 from .commands.files import send, clean, organize, find, big, duplicate, tree, backup, where, fcp
 from .commands.media import join, music, shrink, clip, gif, extract, compress
 from .commands.check import check, doctor
-from .commands.git import gac, repo, undo, pr, branch_clean, stash_all, changelog, sync
+from .commands.git import gac, repo, undo, pr, branch_clean, stash_all, changelog, sync, git_install, gh_login
 from .commands.deploy import ship, login, logout, live, env_push, logs
 from .commands.system import ports, kill_port, wifi, ip, battery, space, info, health, update_all, setup, update
 from .commands.phone import serve_phone, torch, storage, sms, hotspot, wifi_scan, record_audio, backup_photos
@@ -32,20 +43,20 @@ def show_help():
     all_commands = sorted(cli.list_commands(None))
     
     categories = {
-        "📁 Files": ["fcp", "send", "clean", "organize", "find", "big", "duplicate", "tree", "backup", "where", "touch2", "mkdir2", "rm2", "ls2", "pwd2", "size", "ext", "basename", "dirname", "exists", "isdir", "isfile", "search", "rename"],
-        "🎬 Media": ["join", "music", "shrink", "clip", "gif", "extract", "compress"],
-        "🌐 Network": ["speed", "status", "ping", "dns", "whois", "scan-network", "http_get", "http_head", "http_options", "url_parse", "myip", "ip2", "ip-info"],
-        "🕶️ Hacker": ["matrix", "vault", "port-scan", "sniff", "kill-all", "mac_addr", "ipv4_gen", "port_gen", "user_agent", "password", "pin"],
+        "📁 Files": ["fcp", "send", "clean", "organize", "find", "big", "duplicate", "tree", "backup", "where", "search", "rename", "touch2", "mkdir2", "rm2", "ls2", "pwd2", "size", "ext", "basename", "dirname", "exists", "isdir", "isfile", "count_files", "count_dirs", "md5_file", "sha1_file", "sha256_file"],
+        "🎬 Media": ["join", "music", "shrink", "clip", "gif", "extract", "compress", "screenshot", "links", "coffee"],
+        "🌐 Network": ["speed", "status", "ping", "dns", "whois", "scan-network", "myip", "ip2", "ip-info", "ip_loc", "http_get", "http_head", "http_options", "url_parse"],
+        "🕶️ Hacker": ["matrix", "vault", "port-scan", "sniff", "kill-all", "mac_addr", "ipv4_gen", "port_gen", "user_agent", "password", "pin", "port_check"],
         "🚀 Deploy": ["deploy", "login", "logout", "live", "env-push", "logs"],
-        "🐙 Git": ["gac", "repo", "pr", "undo", "sync", "changelog", "branch-clean", "stash-all"],
-        "💻 System": ["ports", "kill-port", "ip", "battery", "space", "info", "health", "update", "update-all", "setup"],
+        "🐙 Git": ["git-install", "gh", "gac", "repo", "pr", "undo", "sync", "changelog", "branch-clean", "stash-all"],
+        "💻 System": ["ports", "kill-port", "ip", "battery", "space", "info", "health", "update", "update-all", "setup", "cpu_count", "env_var", "path_list", "mem_total", "mem_avail", "disk_io", "net_io", "uptime", "whoami2", "clear2", "date2", "sleep2"],
         "📱 Phone": ["serve-phone", "torch", "storage", "sms", "hotspot", "wifi-scan", "record-audio", "backup-photos", "wifi"],
-        "🛠️ Utils": ["screenshot", "shorten", "pomo", "weather", "qr", "todo", "note", "uuid", "agify", "timer", "convert", "paste", "up", "date2", "sleep2", "echo2", "whoami2", "clear2", "json", "joke"],
-        "🔐 Crypto": ["passgen", "hash", "b64enc", "b64encode", "b64dec", "b64decode", "hexenc", "hexdec", "rot13", "morse"],
+        "🛠️ Utils": ["shorten", "pomo", "weather", "qr", "todo", "note", "timer", "convert", "paste", "up", "json", "lorem", "hex_color", "rgb_color", "json_mock", "base64_img", "tz", "timestamp", "days_until", "week_num"],
+        "🔐 Crypto": ["passgen", "hash", "b64enc", "b64encode", "b64dec", "b64decode", "hexenc", "hexdec", "rot13", "morse", "uuid"],
         "👨‍💻 Dev": ["ignore", "license", "readme", "check", "doctor", "github"],
-        "🧮 Math": ["add", "sub", "mul", "div", "mod", "pow", "sqrt", "sin", "cos", "tan", "log", "log10", "ceil", "floor", "round", "abs", "fact", "c2f", "f2c", "bmi"],
-        "🔤 Text": ["upper", "lower", "title", "reverse", "length", "wordcount", "slugify", "camelcase", "snakecase", "kebabcase", "urlenc", "urldec"],
-        "🎲 Fun": ["random", "randint", "choice", "shuffle", "coin", "dice", "magic8", "rps", "catfact", "dogfact", "chuck", "yesno", "nationalize", "genderize", "bored", "bitcoin"]
+        "🧮 Math": ["add", "sub", "mul", "div", "mod", "pow", "sqrt", "sin", "cos", "tan", "log", "log10", "ceil", "floor", "round", "abs", "fact", "c2f", "f2c", "bmi", "mortgage", "tip", "tax", "bin2dec", "dec2bin", "hex2dec", "dec2hex", "oct2dec", "dec2oct", "kg2lb", "lb2kg", "m2ft", "ft2m"],
+        "🔤 Text": ["upper", "lower", "title", "reverse", "length", "wordcount", "slugify", "camelcase", "snakecase", "kebabcase", "urlenc", "urldec", "echo2"],
+        "🎲 Fun": ["random", "randint", "choice", "shuffle", "coin", "dice", "magic8", "rps", "catfact", "dogfact", "chuck", "yesno", "nationalize", "genderize", "bored", "bitcoin", "riddles", "advice", "quote", "trump", "kanye", "pokefact", "name_gen", "joke"]
     }
 
     import shutil
@@ -103,7 +114,7 @@ commands_list = [
     send, clean, organize, find, big, duplicate, tree, backup, where, fcp,
     join, music, shrink, clip, gif, extract, compress,
     check, doctor,
-    gac, repo, undo, pr, branch_clean, stash_all, changelog, sync,
+    gac, repo, undo, pr, branch_clean, stash_all, changelog, sync, git_install, gh_login,
     ship, login, logout, live, env_push, logs,
     ports, kill_port, wifi, ip, battery, space, info, health, update_all, setup, update,
     serve_phone, torch, storage, sms, hotspot, wifi_scan, record_audio, backup_photos,
