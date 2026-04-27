@@ -1,7 +1,6 @@
 # 🚀 Renance DevTools (renance-dt) v3.0
 
 <div align="center">
-  <h1><code>pip install renance-dt</code></h1>
   <h3><a href="https://renance-devtools.vercel.app">🌐 Official Website & Interactive Tutorial</a></h3>
   <p><b>Everything you need in one command.</b></p>
   
