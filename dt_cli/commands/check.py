@@ -27,17 +27,34 @@ def check():
 def doctor():
     """Run comprehensive system diagnostic"""
     click.echo(f"{Colors.CYAN}Running diagnostics...{Colors.RESET}")
-    tools = ['git', 'node', 'python', 'npm', 'pip']
+    tools = ['git', 'node', 'python', 'pip', 'ffmpeg']
     all_good = True
     for tool in tools:
         try:
-            subprocess.run([tool, '--version'], capture_output=True, check=True)
+            subprocess.run([tool, '-version' if tool == 'ffmpeg' else '--version'], capture_output=True, check=True)
             click.echo(f"{Colors.GREEN}✅ {tool} is installed{Colors.RESET}")
-        except FileNotFoundError:
-            click.echo(f"{Colors.RED}❌ {tool} is missing{Colors.RESET}")
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            click.echo(f"{Colors.RED}❌ {tool} is missing or not working{Colors.RESET}")
+            if tool == 'ffmpeg':
+                click.echo(f"{Colors.YELLOW}   👉 Tip: Install ffmpeg from ffmpeg.org or via package manager (choco install ffmpeg on Windows).{Colors.RESET}")
             all_good = False
-            
+    
+    click.echo(f"\n{Colors.CYAN}Checking Python Dependencies...{Colors.RESET}")
+    deps = ['click', 'colorama', 'requests', 'qrcode', 'PIL', 'psutil', 'speedtest', 'mss', 'pyjokes']
+    for dep in deps:
+        try:
+            if dep == 'PIL':
+                import PIL
+            elif dep == 'speedtest':
+                import speedtest
+            else:
+                __import__(dep)
+            click.echo(f"{Colors.GREEN}✅ {dep} is available{Colors.RESET}")
+        except ImportError:
+            click.echo(f"{Colors.RED}❌ {dep} is missing{Colors.RESET}")
+            all_good = False
+
     if all_good:
-        click.echo(f"{Colors.CYAN}✅ Everything looks good!{Colors.RESET}")
+        click.echo(f"\n{Colors.CYAN}✅ Everything looks good!{Colors.RESET}")
     else:
-        click.echo(f"{Colors.YELLOW}⚠️ Some tools are missing.{Colors.RESET}")
+        click.echo(f"\n{Colors.YELLOW}⚠️ Some tools or dependencies are missing. Run 'install.bat' to fix Python dependencies.{Colors.RESET}")

@@ -2,9 +2,95 @@ import click, subprocess
 from pathlib import Path
 from ..config import Colors
 
+import click, subprocess, os
+from pathlib import Path
+from ..config import Colors
+
+def is_git_installed():
+    try:
+        subprocess.run(['git', '--version'], capture_output=True, check=True)
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+
+def is_gh_logged_in():
+    try:
+        result = subprocess.run(['gh', 'auth', 'status'], capture_output=True, text=True)
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+
+@click.command(name='git-install')
+def git_install():
+    """Install Git and GitHub CLI automatically"""
+    click.echo(f"{Colors.CYAN}🚀 Starting Git & GitHub CLI installation...{Colors.RESET}")
+    
+    if os.name == 'nt':
+        click.echo(f"{Colors.YELLOW}Detecting Windows environment...{Colors.RESET}")
+        try:
+            # Check for winget
+            subprocess.run('winget --version', shell=True, capture_output=True, check=True)
+            
+            click.echo(f"{Colors.CYAN}Installing Git...{Colors.RESET}")
+            subprocess.run('winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements', shell=True, check=True)
+            
+            click.echo(f"{Colors.CYAN}Installing GitHub CLI...{Colors.RESET}")
+            subprocess.run('winget install --id GitHub.cli -e --source winget --accept-source-agreements --accept-package-agreements', shell=True, check=True)
+            
+        except subprocess.CalledProcessError:
+            click.echo(f"{Colors.RED}❌ Winget (Windows Package Manager) not found or failed.{Colors.RESET}")
+            click.echo(f"Please install manually from: https://git-scm.com/ and https://cli.github.com/")
+        except Exception as e:
+            click.echo(f"{Colors.RED}Installation failed: {e}{Colors.RESET}")
+            click.echo(f"Please install manually from: https://git-scm.com/ and https://cli.github.com/")
+    elif 'com.termux' in os.environ.get('PREFIX', ''):
+        click.echo(f"{Colors.YELLOW}Detecting Termux...{Colors.RESET}")
+        subprocess.run(['pkg', 'install', 'git', 'gh', '-y'])
+    else:
+        click.echo(f"{Colors.YELLOW}Detecting Unix-like OS...{Colors.RESET}")
+        click.echo("Please use your package manager (apt, brew, dnf) to install 'git' and 'gh'.")
+
+    click.echo(f"{Colors.GREEN}✅ Installation process triggered. Please RESTART your terminal.{Colors.RESET}")
+
+@click.command(name='gh')
+def gh_login():
+    """Login to GitHub"""
+    try:
+        subprocess.run(['gh', 'auth', 'login'], check=True)
+        click.echo(f"{Colors.GREEN}✅ Logged in successfully!{Colors.RESET}")
+    except FileNotFoundError:
+        click.echo(f"{Colors.RED}❌ GitHub CLI (gh) is not installed. Run 'dt git-install' first.{Colors.RESET}")
+    except Exception as e:
+        click.echo(f"{Colors.RED}❌ Login failed: {e}{Colors.RESET}")
+
 @click.command()
 def gac():
-    """Git add, commit, push"""
+    """Git add, commit, push (with auto-setup checks)"""
+    # 1. Check for Git
+    if not is_git_installed():
+        click.echo(f"{Colors.RED}❌ Git is not installed on this system.{Colors.RESET}")
+        if click.confirm(f"{Colors.CYAN}Would you like to install Git and GitHub CLI now?{Colors.RESET}"):
+            ctx = click.get_current_context()
+            ctx.invoke(git_install)
+        return
+
+    # 2. Check for login
+    if not is_gh_logged_in():
+        click.echo(f"{Colors.YELLOW}⚠️ You are not logged into GitHub.{Colors.RESET}")
+        if click.confirm(f"{Colors.CYAN}Would you like to login now?{Colors.RESET}"):
+            ctx = click.get_current_context()
+            ctx.invoke(gh_login)
+        else:
+            click.echo(f"{Colors.RED}Aborting gac: Login required to push.{Colors.RESET}")
+            return
+
+    # 3. Check if repo is initialized
+    if not Path('.git').exists():
+        if click.confirm(f"{Colors.YELLOW}Git not initialized in this folder. Initialize now?{Colors.RESET}"):
+            subprocess.run(['git', 'init'])
+        else:
+            return
+
     msg = click.prompt(f"{Colors.BLUE}Commit message{Colors.RESET}", default="update")
 
     cmds = [
@@ -15,7 +101,14 @@ def gac():
 
     for cmd in cmds:
         result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0 and 'nothing to commit' not in result.stderr:
+        if result.returncode != 0:
+            if 'nothing to commit' in result.stderr:
+                click.echo(f"{Colors.YELLOW}Nothing to commit, working tree clean.{Colors.RESET}")
+                return
+            if 'no upstream branch' in result.stderr:
+                click.echo(f"{Colors.YELLOW}Setting upstream and pushing...{Colors.RESET}")
+                subprocess.run(['git', 'push', '-u', 'origin', 'HEAD'])
+                break
             click.echo(f"{Colors.RED}Error: {result.stderr}{Colors.RESET}")
             return
 
