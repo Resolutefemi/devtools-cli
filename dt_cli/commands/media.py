@@ -5,21 +5,48 @@ from ..config import get_save_path, Colors
 @click.command()
 def join():
     """Join videos together"""
-    files = click.prompt(f"{Colors.BLUE}Video files (space-separated){Colors.RESET}").split()
-    name = click.prompt(f"{Colors.BLUE}Output name{Colors.RESET}", default="joined")
+    import shlex, tempfile
+    
+    raw_input = click.prompt(f"{Colors.BLUE}Video files (space-separated){Colors.RESET}")
+    # Use shlex to correctly handle quoted paths with or without spaces
+    try:
+        files = shlex.split(raw_input)
+    except ValueError:
+        files = raw_input.split()
 
+    if not files:
+        click.echo(f"{Colors.RED}No files provided.{Colors.RESET}")
+        return
+
+    name = click.prompt(f"{Colors.BLUE}Output name{Colors.RESET}", default="joined")
     output = get_save_path('videos') / f"{name}.mp4"
 
-    # Create file list for ffmpeg
-    list_file = Path('/tmp/videos.txt')
-    list_file.parent.mkdir(exist_ok=True)
-    with open(list_file, 'w') as f:
+    # Use system temp directory instead of /tmp to avoid Windows security issues
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        list_file = Path(f.name)
         for vid in files:
             f.write(f"file '{Path(vid).absolute()}'\n")
 
     click.echo(f"{Colors.CYAN}Joining videos...{Colors.RESET}")
-    subprocess.run(['ffmpeg', '-f', 'concat', '-safe', '0', '-i', str(list_file),
-                   '-c', 'copy', str(output)], capture_output=True)
+    try:
+        result = subprocess.run(['ffmpeg', '-f', 'concat', '-safe', '0', '-i', str(list_file),
+                       '-c', 'copy', str(output)], capture_output=True, text=True)
+        
+        if result.returncode != 0:
+             click.echo(f"{Colors.RED}FFmpeg Error: {result.stderr}{Colors.RESET}")
+    except FileNotFoundError:
+        click.echo(f"{Colors.RED}❌ ffmpeg not found. Please install ffmpeg to use media commands.{Colors.RESET}")
+        return
+    except OSError as e:
+        if "225" in str(e):
+            click.echo(f"{Colors.RED}❌ Antivirus Blocked: Windows Defender blocked ffmpeg execution.{Colors.RESET}")
+            click.echo(f"{Colors.YELLOW}👉 Solution: Add this project folder to your Antivirus Exclusions.{Colors.RESET}")
+        else:
+            click.echo(f"{Colors.RED}❌ System Error: {e}{Colors.RESET}")
+        return
+    finally:
+        if list_file.exists():
+            list_file.unlink()
 
     if output.exists():
         size = output.stat().st_size / 1024 / 1024

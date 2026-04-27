@@ -1,100 +1,106 @@
 # 🚀 Renance DevTools (renance-dt) v3.0
 
-[![PyPI version](https://img.shields.io/pypi/v/renance-dt.svg)](https://pypi.org/project/renance-dt/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Termux-lightgrey)](https://pypi.org/project/renance-dt/)
-[![Built By](https://img.shields.io/badge/Built%20By-Resolutefemi-blue.svg)](mailto:hello@renance.dev)
-
-**Renance DevTools** is a massive, unified CLI ecosystem designed to bridge the gap between standard OS tools and developer needs. With **over 200+ specialized commands** organized into 14 categories, it is the ultimate Swiss Army Knife for modern power users and developers.
-
-> "One command to rule them all." — Built with ❤️ by **Resolutefemi**
+<div align="center">
+  <h1><a href="https://renance-devtools.vercel.app">🌐 Official Website & Interactive Tutorial</a></h1>
+  <p><b>Everything you need in one command.</b></p>
+  
+  [![PyPI version](https://img.shields.io/pypi/v/renance-dt.svg)](https://pypi.org/project/renance-dt/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Termux-lightgrey)](https://pypi.org/project/renance-dt/)
+  [![Built By](https://img.shields.io/badge/Built%20By-Resolutefemi-blue.svg)](mailto:hello@renance.dev)
+</div>
 
 ---
 
-## ⚡ Quick Start
+## 📥 Local Installation (Source Code)
 
-### Installation
-Install globally via pip:
-```bash
-pip install renance-dt
-```
+If you have downloaded the source code, follow these steps to install Renance DevTools locally on your machine:
 
-### Automatic Setup
-Configure your system PATH automatically so you can use the `dt` command from anywhere:
+### 🪟 Windows
+1. Open the project folder.
+2. Double-click **`install.bat`** or run it via PowerShell/CMD:
+   ```powershell
+   .\install.bat
+   ```
+
+### 🍎 macOS / 🐧 Linux / 📱 Termux
+1. Open your terminal and navigate to the project directory.
+2. Grant execution permission to the installer:
+   ```bash
+   chmod +x install.sh
+   ```
+3. Run the installer:
+   ```bash
+   ./install.sh
+   ```
+
+---
+
+## ⚡ Global Setup
+Once installed, run the automatic setup to enable the `dt` command from any directory:
 ```bash
 dt setup
 ```
-*Note: Please restart your terminal after running setup.*
+> **Pro Tip:** Restart your terminal after running `dt setup` to apply the changes.
 
 ---
 
-## 🛠️ Power Features (200+ Commands)
+## 🛠️ 14 Power Categories (200+ Commands)
 
-Renance DevTools is now organized into a beautiful, categorized dashboard. Run `dt` to see them all.
+Renance DevTools is a massive ecosystem. Run `dt help` to see the full dashboard.
 
-### 🚄 High-Speed Engine (`dt fcp`, `dt search`)
-*   **`dt fcp`**: Multi-threaded copy engine for moving massive folders up to 5x faster than standard OS copy.
-*   **`dt search`**: Recursive "super-search" inside file contents with high-speed indexing.
+### 📁 1. High-Speed Files (`dt fcp`, `dt search`, `dt organize`)
+*   **`dt fcp`**: Multi-threaded copy engine for moving massive folders up to 5x faster.
+*   **`dt search`**: Recursive "super-search" inside file contents.
+*   **`dt clean`**: Deep-clean build artifacts and temp files.
 
-### 🚀 Smart Deployment (`dt deploy`)
-*   **Interactive Engine**: One-click deployment to **Vercel, Netlify, and Render**.
-*   **Auto-Auth**: Automatically detects if you are logged in and handles the authentication flow for you.
+### 🎬 2. Media Processing (`dt join`, `dt shrink`, `dt music`)
+*   **`dt shrink`**: Compress videos for WhatsApp or Web.
+*   **`dt music`**: Extract high-quality MP3s from any video file.
+*   **`dt gif`**: Convert video clips into optimized GIFs.
 
-### 🕶️ Hacker & Network Mode (`dt matrix`, `dt speed`, `dt vault`)
-*   **`dt matrix`**: Transform your terminal into the iconic falling green code.
-*   **`dt vault`**: Encrypt/Decrypt sensitive files with a custom password toggle.
-*   **`dt speed`**: Real-time, accurate internet speed test (Down/Up/Ping).
-*   **`dt sniff`**: Simulated network sniffer for that elite hacker aesthetic.
+### 🐙 3. Smart Git Workflow (`dt gac`, `dt repo`, `dt pr`)
+*   **`dt gac`**: The ultimate Add-Commit-Push flow in one command.
+*   **`dt repo`**: Create a GitHub repository directly from your terminal.
+*   **`dt pr`**: Create Pull Requests without leaving the CLI.
 
-### 🧮 Advanced Utilities
-*   **Finance**: `dt mortgage`, `dt tip`, `dt tax` calculators.
-*   **System**: `dt uptime`, `dt cpu_count`, `dt mem_total`, `dt wifi` (password extractor).
-*   **Dev**: `dt ignore`, `dt license`, `dt readme`, `dt check`, `dt doctor`.
-*   **Fun**: `dt joke`, `dt riddles`, `dt advice`, `dt quote`, `dt kanye`, `dt catfact`.
+### 🕶️ 4. Hacker Mode (`dt matrix`, `dt vault`, `dt sniff`)
+*   **`dt matrix`**: Iconic falling green code effect.
+*   **`dt vault`**: Encrypt/Decrypt sensitive files with password protection.
+*   **`dt port-scan`**: Elite network diagnostic and port scanner.
 
----
+### 📱 5. Phone Remote (`dt serve-phone`, `dt torch`, `dt sms`)
+*   **`dt serve-phone`**: Instantly serve local files to your phone via QR code.
+*   **`dt torch`**: Control your Android device's flashlight (via Termux).
+*   **`dt sms`**: Send messages directly from your terminal.
 
-## 📖 Usage
+### 🚀 6. Cloud Deployment (`dt deploy`, `dt login`, `dt logs`)
+*   **`dt deploy`**: One-click shipping to **Vercel, Netlify, and Render**.
+*   **`dt logs`**: Real-time production error logging stream.
 
-### Dashboard
-To see the categorized dashboard of all 200+ commands:
-```bash
-dt
-```
+### 🌐 7. Network & Security (`dt speed`, `dt whois`, `dt dns`)
+*   **`dt speed`**: Accurate internet speed benchmark (Down/Up/Ping).
+*   **`dt scan-network`**: Discover all active devices on your local LAN.
 
-### About the Project
-To see credits and detailed project information:
-```bash
-dt about
-```
+### 🔐 8. Crypto & Dev Utils (`dt passgen`, `dt hash`, `dt ignore`)
+*   **`dt passgen`**: Generate ultra-secure randomized passwords.
+*   **`dt ignore`**: Auto-generate `.gitignore` for any language/framework.
+*   **`dt b64encode`**: Fast Base64 encoding/decoding for developers.
 
-### Command Help
-To get specific instructions for any command:
-```bash
-dt [command] --help
-```
+### 🧮 9. Math & Conversion (`dt add`, `dt bmi`, `dt unit`)
+*   **`dt add`**: Sum any number of arguments instantly.
+*   **`dt bmi`**: Quick health diagnostics and BMI calculator.
 
----
-
-## 🔄 Self-Update
-Keep your toolkit fresh with the latest commands and performance patches:
-```bash
-dt update
-```
+### 🛠️ 10. System Utilities (`dt doctor`, `dt ports`, `dt wifi`)
+*   **`dt doctor`**: Run a full system health audit of your environment.
+*   **`dt kill-port`**: Forcefully close blocked development ports.
+*   **`dt wifi`**: Retrieve saved WiFi passwords.
 
 ---
 
-## 📜 License
-Distributed under the **MIT License**.
-
-## 🤝 Contributing
-Built and maintained by **Resolutefemi**. 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## 📖 Official Tutorial
+For the full interactive command dashboard and detailed usage guides, visit the official site:
+👉 **[renance-devtools.vercel.app](https://renance-devtools.vercel.app)**
 
 ---
-**Renance DevTools** — Empowering developers, one command at a time.
-
+Built with ❤️ by **Resolutefemi**
