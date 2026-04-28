@@ -1,7 +1,7 @@
 # 🚀 Renance DevTools (renance-dt) v3.0
 
 <div align="center">
-  <h3><a href="https://renance-devtools.vercel.app">🌐 Official Website & Interactive Tutorial</a></h3>
+  <h3><a href="https://devtools.pxxl.click">🌐 Official Website & Interactive Tutorial</a></h3>
   <p><b>Everything you need in one command.</b></p>
   
   [![PyPI version](https://img.shields.io/pypi/v/renance-dt.svg)](https://pypi.org/project/renance-dt/)
@@ -76,7 +76,7 @@ Renance DevTools is a massive ecosystem. Run `dt help` to see the full dashboard
 
 ## 📖 Official Tutorial
 For the full interactive command dashboard and detailed usage guides, visit the official site:
-👉 **[renance-devtools.vercel.app](https://renance-devtools.vercel.app)**
+👉 **[devtools.pxxl.click](https://devtools.pxxl.click)**
 
 ---
 Built with ❤️ by **Resolutefemi**
