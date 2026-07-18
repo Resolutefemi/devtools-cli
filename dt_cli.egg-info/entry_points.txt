@@ -1,2 +1,0 @@
-[console_scripts]
-dt = dt_cli.cli:cli
