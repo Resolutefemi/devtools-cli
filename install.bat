@@ -1,8 +1,7 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-:: ANSI Color Codes via PowerShell helper
-set "PS_COLOR=powershell -NoProfile -Command "Write-Host"
+:: Renance DevTools Windows Installer
 
 :: Check for Python
 where python >nul 2>nul
@@ -23,45 +22,55 @@ if %ERRORLEVEL% EQU 0 (
     goto :found
 )
 
-%PS_COLOR% "❌ Python not found. Please install Python from python.org" -ForegroundColor Red
+echo [ERROR] Python not found. Please install Python from python.org
 pause
 exit /b 1
 
 :found
 cls
 echo.
-%PS_COLOR% "  🚀 Renance DevTools v3.0 Installer" -ForegroundColor Cyan -NoNewline
-%PS_COLOR% " [Windows]" -ForegroundColor DarkGray
-echo   ------------------------------------------
+echo   ==========================================
+echo    Renance DevTools v3.1 Installer [Windows]
+echo   ==========================================
 echo.
 
-%PS_COLOR% "  [1/3] " -ForegroundColor DarkGray -NoNewline
-%PS_COLOR% "Checking environment..." -ForegroundColor White
-:: Try to install/ensure pip if missing
+echo   [1/4] Checking environment...
 %PY% -m pip --version >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
     %PY% -m ensurepip --default-pip >nul 2>nul
 )
 
-%PS_COLOR% "  [2/3] " -ForegroundColor DarkGray -NoNewline
-%PS_COLOR% "Installing dependencies via %PY%..." -ForegroundColor White
-%PY% -m pip install -e . --quiet
+echo   [2/4] Installing dependencies via %PY%...
+%PY% -m pip install -e . --quiet 2>nul
 if %ERRORLEVEL% NEQ 0 (
-    %PY% -m pip install -r requirements.txt --quiet >nul 2>nul
+    %PY% -m pip install -e .
 )
 
-%PS_COLOR% "  [3/3] " -ForegroundColor DarkGray -NoNewline
-%PS_COLOR% "Configuring system PATH..." -ForegroundColor White
+echo   [3/4] Configuring system PATH...
 %PY% -m dt_cli.cli setup >nul 2>nul
 
+echo   [4/4] Applying PATH to current session...
+
+:: Auto-apply PATH immediately in current CMD session
+set "PATH=%USERPROFILE%\AppData\Roaming\Python\Scripts;%USERPROFILE%\AppData\Local\Programs\Python\Python*\Scripts;%LOCALAPPDATA%\Programs\Python\Python*\Scripts;%PATH%"
+for /f "delims=" %%i in ('%PY% -c "import sys, os; print(os.path.join(sys.prefix, 'Scripts'))" 2^>nul') do set "PATH=%%i;%PATH%"
+for /f "delims=" %%i in ('%PY% -c "import site; print(os.path.join(site.getuserbase(), 'Scripts'))" 2^>nul') do set "PATH=%%i;%PATH%"
+
 echo.
-echo   ------------------------------------------
-%PS_COLOR% "  ✅ INSTALLATION SUCCESSFUL!" -ForegroundColor Green
+echo   ==========================================
+echo    ✅ INSTALLATION SUCCESSFUL!
+echo   ==========================================
 echo.
-%PS_COLOR% "  💡 Pro Tip: " -ForegroundColor Yellow -NoNewline
-%PS_COLOR% "Restart your terminal to enable the 'dt' command." -ForegroundColor White
-%PS_COLOR% "  🚀 Usage:   " -ForegroundColor Cyan -NoNewline
-%PS_COLOR% "Type 'dt help' to explore 200+ commands." -ForegroundColor White
+echo   💡 PATH has been set for this session.
+echo   🚀 Usage:  Type 'dt help' to explore 235+ commands.
 echo.
+
+:: Verify
+where dt >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo   ✅ 'dt' command is ready to use now!
+) else (
+    echo   💡 Close and reopen your terminal if 'dt' is not found.
+)
 echo.
 pause
