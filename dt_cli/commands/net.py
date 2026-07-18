@@ -1,5 +1,5 @@
 import click, subprocess, socket, time, threading, random, math
-from ..config import console, BORDER_ROUNDED
+from ..config import console, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.table import Table
 from rich.layout import Layout
@@ -169,7 +169,7 @@ def scan_network():
 
         with Progress(
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=40),
+            BarColumn(bar_width=bar_width()),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             console=console,
         ) as progress:
