@@ -1,5 +1,5 @@
 import click, subprocess, os, time, shutil
-from ..config import console, get_save_path, ask_filename, confirm_save, IS_TERMUX, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, IS_TERMUX, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.table import Table
@@ -252,7 +252,7 @@ def backup_photos():
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=30),
+        BarColumn(bar_width=bar_width()),
         console=console,
     ) as progress:
         task = progress.add_task("[info]Backing up photos...[/info]", total=len(image_files))
