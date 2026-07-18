@@ -1,6 +1,6 @@
 import click, shutil, os, datetime, hashlib, concurrent.futures
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, IGNORE_DIRS, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, IGNORE_DIRS, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
@@ -276,7 +276,7 @@ def fcp(src, dest):
         with Progress(
             SpinnerColumn("dots"),
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30),
+            BarColumn(bar_width=bar_width()),
             console=console,
         ) as progress:
             task = progress.add_task("[info]Copying...[/info]", total=src_path.stat().st_size)
@@ -301,7 +301,7 @@ def fcp(src, dest):
 
         with Progress(
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30),
+            BarColumn(bar_width=bar_width()),
             console=console,
         ) as progress:
             task = progress.add_task(f"[info]Copying {len(files)} files (8 threads)...[/info]", total=len(files))
