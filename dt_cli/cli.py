@@ -16,14 +16,19 @@ from rich import box
 
 # ── Import all command modules ─────────────────────────────────────
 from .commands.files import send, clean, organize, find, big, duplicate, tree, backup, where, fcp
-from .commands.media import join, music, shrink, clip, gif, extract, compress
+from .commands.media import (
+    join, music, shrink, clip, gif, extract, compress,
+    trim_audio, merge_audio, audio_speed, video_speed,
+    reverse_video, add_audio, mute_video, watermark,
+    thumbnail, audio_info, video_info,
+)
 from .commands.check import check, doctor
 from .commands.git import gac, repo, undo, pr, branch_clean, stash_all, changelog, sync, git_install, gh_login
 from .commands.deploy import ship, login, logout, live, env_push, logs
-from .commands.system import ports, kill_port, wifi, ip, battery, space, info, health, update_all, setup, update
+from .commands.system import ports, kill_port, wifi, ip, battery, space, info, health, update_all, setup, update, sysmon
 from .commands.phone import serve_phone, torch, storage, sms, hotspot, wifi_scan, record_audio, backup_photos
 from .commands.utils import up, qr, todo, note, timer, weather, paste, pomo, shorten, status
-from .commands.net import ping, myip, dns, scan_network, speed, whois, ip_info
+from .commands.net import ping, myip, dns, scan_network, speed, whois, ip_info, ip_loc
 from .commands.crypto import passgen, hash, b64encode, b64decode
 from .commands.dev import ignore, license_cmd, readme
 from .commands.hacker import matrix, port_scan, sniff, vault
@@ -50,7 +55,7 @@ def show_help():
     # Build the header
     header = Text()
     header.append("  R E N A N C E   D E V T O O L S\n", style="bold brand")
-    header.append(f"  v4.0.0  |  {platform}  |  ", style="dim")
+    header.append(f"  v5.0.0  |  {platform}  |  ", style="dim")
     header.append("by Resolutefemi", style="muted")
     header.append("\n  One command to rule them all\n", style="dim")
 
@@ -59,12 +64,12 @@ def show_help():
     all_commands = sorted(cli.list_commands(None))
     categories = {
         "Files": ["fcp", "send", "clean", "organize", "find", "big", "duplicate", "tree", "backup", "where", "search", "rename", "touch2", "mkdir2", "rm2", "ls2", "pwd2", "size", "ext", "basename", "dirname", "exists", "isdir", "isfile", "count_files", "count_dirs", "md5_file", "sha1_file", "sha256_file"],
-        "Media": ["join", "music", "shrink", "clip", "gif", "extract", "compress", "screenshot", "convert", "dm"],
-        "Network": ["speed", "status", "ping", "dns", "whois", "scan-network", "myip", "ip-info", "ip2", "http_get", "http_head", "http_options", "url_parse", "ip_loc"],
+        "Media": ["join", "music", "shrink", "clip", "gif", "extract", "compress", "screenshot", "convert", "dm", "trim-audio", "merge-audio", "audio-speed", "video-speed", "reverse-video", "add-audio", "mute-video", "watermark", "thumbnail", "audio-info", "video-info"],
+        "Network": ["speed", "status", "ping", "dns", "whois", "scan-network", "myip", "ip-info", "ip-loc", "ip2", "http_get", "http_head", "http_options", "url_parse"],
         "Hacker": ["matrix", "vault", "port-scan", "sniff", "kill-all", "mac_addr", "ipv4_gen", "port_gen", "user_agent", "password", "pin", "port_check"],
         "Deploy": ["deploy", "login", "logout", "live", "env-push", "logs"],
         "Git": ["git-install", "gh", "gac", "repo", "pr", "undo", "sync", "changelog", "branch-clean", "stash-all"],
-        "System": ["ports", "kill-port", "ip", "battery", "space", "info", "health", "update", "update-all", "setup", "cpu_count", "env_var", "path_list", "mem_total", "mem_avail", "disk_io", "net_io", "uptime", "whoami2", "clear2", "date2", "sleep2"],
+        "System": ["ports", "kill-port", "ip", "battery", "space", "info", "health", "sysmon", "update", "update-all", "setup", "cpu_count", "env_var", "path_list", "mem_total", "mem_avail", "disk_io", "net_io", "uptime", "whoami2", "clear2", "date2", "sleep2"],
         "Phone": ["serve-phone", "torch", "storage", "sms", "hotspot", "wifi-scan", "record-audio", "backup-photos", "wifi"],
         "Utils": ["shorten", "pomo", "weather", "qr", "todo", "note", "timer", "paste", "up", "json", "lorem", "hex_color", "rgb_color", "json_mock", "base64_img", "tz", "timestamp", "days_until", "week_num"],
         "Crypto": ["passgen", "hash", "b64enc", "b64encode", "b64dec", "b64decode", "hexenc", "hexdec", "rot13", "morse", "uuid"],
@@ -74,7 +79,7 @@ def show_help():
         "Fun": ["random", "randint", "choice", "shuffle", "coin", "dice", "magic8", "rps", "catfact", "dogfact", "chuck", "yesno", "nationalize", "genderize", "bored", "bitcoin", "riddles", "advice", "quote", "trump", "kanye", "pokefact", "name_gen", "joke", "coffee"],
     }
 
-    # Build a 2-column table per category
+    # Build a 3-column table per category
     displayed = set()
     for cat_name, cmd_list in categories.items():
         cmds = [c for c in cmd_list if c in all_commands]
@@ -135,7 +140,7 @@ def about():
     table.add_column(style="info", ratio=1)
     table.add_column(style="white", ratio=2)
     table.add_row("Name", "[bold brand]Renance DevTools (renance-dt)[/bold brand]")
-    table.add_row("Version", "4.0.0")
+    table.add_row("Version", "5.0.0")
     table.add_row("Author", "[white]Resolutefemi[/white]")
     table.add_row("Email", "[info]hello@renance.dev[/info]")
     table.add_row("License", "[success]MIT[/success]")
@@ -153,13 +158,16 @@ def about():
 commands_list = [
     send, clean, organize, find, big, duplicate, tree, backup, where, fcp,
     join, music, shrink, clip, gif, extract, compress,
+    trim_audio, merge_audio, audio_speed, video_speed,
+    reverse_video, add_audio, mute_video, watermark,
+    thumbnail, audio_info, video_info,
     check, doctor,
     gac, repo, undo, pr, branch_clean, stash_all, changelog, sync, git_install, gh_login,
     ship, login, logout, live, env_push, logs,
-    ports, kill_port, wifi, ip, battery, space, info, health, update_all, setup, update,
+    ports, kill_port, wifi, ip, battery, space, info, health, sysmon, update_all, setup, update,
     serve_phone, torch, storage, sms, hotspot, wifi_scan, record_audio, backup_photos,
     up, qr, todo, note, timer, weather, paste, pomo, shorten, status,
-    ping, myip, dns, scan_network, speed, whois, ip_info,
+    ping, myip, dns, scan_network, speed, whois, ip_info, ip_loc,
     passgen, hash, b64encode, b64decode,
     ignore, license_cmd, readme, help_cmd, about,
     matrix, port_scan, sniff, vault,
@@ -184,6 +192,8 @@ for cmd in commands_list:
         cli.add_command(cmd, name='scan-network')
     elif cmd is license_cmd:
         cli.add_command(cmd, name='license')
+    elif cmd is ip_loc:
+        cli.add_command(cmd, name='ip-loc')
     else:
         cli.add_command(cmd)
 

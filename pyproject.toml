@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "renance-dt"
-version = "4.0.0"
+version = "5.0.0"
 description = "Renance DevTools - One command to rule them all"
 authors = [{name = "Renance", email = "hello@renance.dev"}]
 readme = "README.md"
