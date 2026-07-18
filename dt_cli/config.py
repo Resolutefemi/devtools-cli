@@ -6,6 +6,7 @@ IS_ANDROID = Path('/system/bin/app_process').exists()
 IS_WINDOWS = os.name == 'nt'
 IS_MACOS = os.sys.platform == 'darwin'
 IS_LINUX = os.sys.platform.startswith('linux') and not IS_TERMUX and not IS_ANDROID
+IS_NARROW = False  # updated after Console init
 
 CONFIG_DIR = Path.home() / '.dt'
 CONFIG_DIR.mkdir(exist_ok=True)
@@ -28,6 +29,33 @@ DT_THEME = Theme({
 })
 
 console = Console(theme=DT_THEME, highlight=False, legacy_windows=False)
+
+# ── Responsive helpers ─────────────────────────────────────────────
+def is_narrow():
+    """True when terminal is narrow (< 50 columns)."""
+    return console.width < 50
+
+
+def bar_width():
+    """Return a sensible bar width for progress bars."""
+    w = console.width
+    if w < 30:
+        return 10
+    elif w < 50:
+        return 20
+    else:
+        return 30
+
+
+def help_columns():
+    """Return number of columns for help display (1, 2, or 3)."""
+    w = console.width
+    if w < 35:
+        return 1
+    elif w < 55:
+        return 2
+    else:
+        return 3
 
 # ── Re-usable Rich objects ─────────────────────────────────────────
 from rich.panel import Panel
