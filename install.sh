@@ -32,14 +32,33 @@ else
     exit 1
 fi
 
-# 2. Install in editable mode
+# 3. Install in editable mode
 echo -e "${CYAN}📦 Installing dependencies...${NC}"
-$PY -m pip install -e .
+$PY -m pip install -e . --quiet 2>/dev/null || $PY -m pip install -e .
 
-# 3. Run Setup for PATH configuration
+# 4. Run Setup for PATH configuration
 echo -e "${CYAN}⚙️ Configuring system PATH...${NC}"
-$PY -m dt_cli.cli setup
+$PY -m dt_cli.cli setup 2>/dev/null
 
-echo -e "\n${GREEN}✅ Installation complete!${NC}"
-echo -e "${YELLOW}💡 Please restart your terminal or run 'source ~/.bashrc' (or your shell config) to use 'dt' globally.${NC}"
-echo -e "${CYAN}💡 You can run 'dt help' to see all available commands.${NC}"
+# 5. Auto-apply PATH in current session (no restart needed)
+if [[ "$PREFIX" == *"/com.termux/"* ]]; then
+    export PATH="$PATH:$PREFIX/bin"
+else
+    # Add all common Python user bin directories
+    export PATH="$HOME/.local/bin:$PATH"
+    [ -d "$HOME/.pyenv/shims" ] && export PATH="$HOME/.pyenv/shims:$PATH"
+    [ -d "$HOME/.cargo/bin" ] && export PATH="$HOME/.cargo/bin:$PATH"
+    export PATH="$(python3 -c 'import site; print(site.getuserbase())' 2>/dev/null)/bin:$PATH" 2>/dev/null
+fi
+
+# 6. Verify
+if command -v dt &>/dev/null; then
+    DT_PATH=$(which dt 2>/dev/null || command -v dt 2>/dev/null)
+    echo -e "${GREEN}✅ Installation complete!${NC}"
+    echo -e "${GREEN}   dt command available at: ${DT_PATH}${NC}"
+    echo -e "${CYAN}🚀 Run 'dt help' to see all available commands.${NC}"
+else
+    echo -e "\n${GREEN}✅ Installation complete!${NC}"
+    echo -e "${YELLOW}💡 The 'dt' command is installed. Close and reopen your terminal to use it.${NC}"
+    echo -e "${CYAN}   Or run this now:  export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+fi
