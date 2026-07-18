@@ -1,9 +1,9 @@
-# 🚀 Renance DevTools (renance-dt) v3.0
+# Renance DevTools (renance-dt) v5.0
 
 <div align="center">
-  <h3><a href="https://devtools.pxxl.click">🌐 Official Website & Interactive Tutorial</a></h3>
+  <h3><a href="https://devtools.pxxl.click">Official Website & Interactive Tutorial</a></h3>
   <p><b>Everything you need in one command.</b></p>
-  
+
   [![PyPI version](https://img.shields.io/pypi/v/renance-dt.svg)](https://pypi.org/project/renance-dt/)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Termux-lightgrey)](https://pypi.org/project/renance-dt/)
@@ -12,16 +12,27 @@
 
 ---
 
-## ⚡ Quick Start
+## What's New in v5.0
+
+- **Live Speed Test** - `dt speed` now works without any external tools, with fast.com-style animated fluctuating display
+- **12 New Media Commands** - trim audio, merge audio, audio speed change, video speed change, reverse video, add audio, mute video, watermark, thumbnail extraction, audio/video info
+- **Live System Monitor** - `dt sysmon` for continuous real-time CPU/RAM/Disk/Network monitoring with sparklines
+- **Animated System Health** - `dt health` now shows live animated bars with sparkline history
+- **Enhanced Ping** - `dt ping` now shows animated per-packet results with min/avg/max
+- **IP Location** - `dt ip-loc` to get your approximate location from IP
+- **Real FFmpeg Progress** - All media commands now show actual conversion progress instead of just a spinner
+- **Better Audio Extraction** - `dt music` now supports MP3, WAV, FLAC, AAC, OGG output formats
+
+---
+
+## Quick Start
 
 ### 1. Global Installation (Recommended)
-Install globally via pip to use the `dt` command from anywhere:
 ```bash
 pip install renance-dt
 ```
 
 ### 2. Automatic Setup
-Configure your system PATH automatically:
 ```bash
 dt setup
 ```
@@ -29,54 +40,70 @@ dt setup
 
 ---
 
-## 📥 Local Installation (Source Code)
+## Local Installation (Source Code)
 
-If you have downloaded the source code, follow these steps:
+### Windows
+1. Open the `dt-cli` directory.
+2. Double-click `install.bat` or run: `.\install.bat`
 
-### 🪟 Windows
-1. Open the **`dt-cli`** directory.
-2. Double-click **`install.bat`** or run: `.\install.bat`
-
-### 🍎 macOS / 🐧 Linux / 📱 Termux
-1. Navigate to the **`dt-cli`** directory.
+### macOS / Linux / Termux
+1. Navigate to the `dt-cli` directory.
 2. Run: `chmod +x install.sh && ./install.sh`
 
 ---
 
-## 🛠️ 14 Power Categories (200+ Commands)
+## 14 Power Categories (220+ Commands)
 
-Renance DevTools is a massive ecosystem. Run `dt help` to see the full dashboard.
+Run `dt help` to see the full interactive dashboard.
 
-### 📁 1. High-Speed Files (`dt fcp`, `dt search`, `dt organize`)
-*   **`dt fcp`**: Multi-threaded copy engine for moving massive folders up to 5x faster.
-*   **`dt search`**: Recursive "super-search" inside file contents.
-*   **`dt clean`**: Deep-clean build artifacts and temp files.
+### Files (`dt fcp`, `dt search`, `dt organize`)
+- `dt fcp` - Multi-threaded copy engine (up to 5x faster)
+- `dt search` - Recursive content search
+- `dt clean` - Deep-clean build artifacts
 
-### 🎬 2. Media Processing (`dt join`, `dt shrink`, `dt music`)
-*   **`dt shrink`**: Compress videos for WhatsApp or Web.
-*   **`dt music`**: Extract high-quality MP3s from any video file.
-*   **`dt gif`**: Convert video clips into optimized GIFs.
+### Media (`dt join`, `dt shrink`, `dt music`, `dt convert`, `dt dm`)
+- `dt join` - Merge multiple videos
+- `dt shrink` - Compress videos (WhatsApp/Web/HD)
+- `dt music` - Extract audio (MP3/WAV/FLAC/AAC/OGG)
+- `dt gif` - Video to optimized GIF
+- `dt trim-audio` - Cut audio files
+- `dt merge-audio` - Join audio files
+- `dt audio-speed` - Speed up/slow down audio
+- `dt video-speed` - Speed up/slow down video
+- `dt reverse-video` - Play video in reverse
+- `dt add-audio` - Add/replace audio on video
+- `dt mute-video` - Remove audio from video
+- `dt watermark` - Add text watermark to video
+- `dt thumbnail` - Extract thumbnail from video
+- `dt audio-info` / `dt video-info` - Media file details
+- `dt convert` - Universal file converter (Audio/Video/Image/SVG/Documents)
+- `dt dm` - Download from any social media platform
 
-### 🐙 3. Smart Git Workflow (`dt gac`, `dt repo`, `dt pr`)
-*   **`dt gac`**: The ultimate Add-Commit-Push flow in one command.
-*   **`dt repo`**: Create a GitHub repository directly from your terminal.
-*   **`dt pr`**: Create Pull Requests without leaving the CLI.
+### Network (`dt speed`, `dt ping`, `dt myip`)
+- `dt speed` - Live speed test with animated display (no external tools needed)
+- `dt ping` - Animated ping with stats
+- `dt sysmon` - Real-time system resource monitor
 
-### 🕶️ 4. Hacker Mode (`dt matrix`, `dt vault`, `dt sniff`)
-*   **`dt matrix`**: Iconic falling green code effect.
-*   **`dt vault`**: Encrypt/Decrypt sensitive files with password protection.
-*   **`dt port-scan`**: Elite network diagnostic and port scanner.
+### Hacker (`dt matrix`, `dt vault`, `dt sniff`)
+- `dt matrix` - Falling green code effect
+- `dt vault` - Encrypt/Decrypt files
+- `dt port-scan` - Network port scanner
 
-### 📱 5. Phone Remote (`dt serve-phone`, `dt torch`, `dt sms`)
-*   **`dt serve-phone`**: Instantly serve local files to your phone via QR code.
-*   **`dt torch`**: Control your Android device's flashlight (via Termux).
-*   **`dt sms`**: Send messages directly from your terminal.
+### System (`dt health`, `dt sysmon`, `dt info`)
+- `dt health` - Live animated health monitor
+- `dt sysmon` - Continuous resource monitor with sparklines
+- `dt info` - Detailed system information
+
+### Phone (`dt serve-phone`, `dt torch`, `dt sms`)
+- `dt serve-phone` - Serve files via QR code
+- `dt torch` - Control flashlight (Termux)
+- `dt sms` - Send SMS (Termux)
 
 ---
 
-## 📖 Official Tutorial
-For the full interactive command dashboard and detailed usage guides, visit the official site:
-👉 **[devtools.pxxl.click](https://devtools.pxxl.click)**
+## Official Tutorial
+For the full interactive command dashboard, visit:
+**[devtools.pxxl.click](https://devtools.pxxl.click)**
 
 ---
-Built with ❤️ by **Resolutefemi**
+Built with love by **Resolutefemi**

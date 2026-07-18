@@ -1,9 +1,26 @@
-import click, subprocess, socket, psutil, os, platform, shutil
+import click, subprocess, socket, psutil, os, platform, shutil, time
 from ..config import console, BORDER_ROUNDED, IS_TERMUX
 from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, BarColumn, TextColumn
+from rich.live import Live
+from rich.layout import Layout
+from rich.text import Text
 from rich import box
+
+
+def _make_bar(value, max_val=100, width=25):
+    """Create a colored bar."""
+    pct = min(value / max_val, 1.0) if max_val > 0 else 0
+    filled = int(pct * width)
+    empty = width - filled
+    if pct > 0.8:
+        color = "red"
+    elif pct > 0.6:
+        color = "warn"
+    else:
+        color = "success"
+    return f"[{color}]{'█' * filled}{'░' * empty}[/{color}]"
 
 
 @click.command()
@@ -128,26 +145,38 @@ def ip():
 
 @click.command()
 def battery():
-    """Show battery status"""
+    """Show battery status with animated display"""
     if hasattr(psutil, 'sensors_battery'):
-        battery = psutil.sensors_battery()
-        if battery:
-            plugged = "Plugged In" if battery.power_plugged else "Discharging"
-            status_style = "success" if battery.power_plugged else ("warn" if battery.percent < 20 else "info")
+        bat = psutil.sensors_battery()
+        if bat:
+            console.print()
+            with Live(console=console, refresh_per_second=2, transient=True) as live:
+                for frame in range(8):
+                    pct = bat.percent
+                    plugged = "Plugged In" if bat.power_plugged else "Discharging"
+                    status_style = "success" if bat.power_plugged else ("warn" if pct < 20 else "info")
 
-            # Battery bar
-            bar_len = 20
-            filled = int(battery.percent / 100 * bar_len)
-            bar = "█" * filled + "░" * (bar_len - filled)
+                    # Animated battery icon
+                    bar_len = 20
+                    filled = int(pct / 100 * bar_len)
 
-            table = Table(box=box.ROUNDED, border_style=status_style, show_header=False, padding=(0, 2))
-            table.add_column(style="dim", ratio=1)
-            table.add_column(ratio=2)
-            table.add_row("Battery", f"[{status_style}]{bar}[/{status_style}] {battery.percent}%")
-            table.add_row("Status", plugged)
-            if battery.secsleft > 0:
-                hours, mins = divmod(battery.secsleft // 60, 60)
-                table.add_row("Remaining", f"{hours}h {mins}m")
+                    # Pulsing effect
+                    pulse = "█" if frame % 2 == 0 else "▓"
+                    empty_char = "░"
+                    bar = f"[{status_style}]{pulse * filled}{empty_char * (bar_len - filled)}[/{status_style}]"
+
+                    table = Table(box=box.ROUNDED, border_style=status_style, show_header=False, padding=(0, 2))
+                    table.add_column(style="dim", ratio=1)
+                    table.add_column(ratio=2)
+                    table.add_row("Battery", f"{bar} {pct}%")
+                    table.add_row("Status", plugged)
+                    if bat.secsleft > 0:
+                        hours, mins = divmod(bat.secsleft // 60, 60)
+                        table.add_row("Remaining", f"{hours}h {mins}m")
+                    live.update(table)
+                    time.sleep(0.3)
+
+            # Final static display
             console.print(table)
         else:
             console.print("[yellow]No battery info available (desktop/server?).[/yellow]")
@@ -157,7 +186,10 @@ def battery():
 
 @click.command()
 def space():
-    """Check disk space usage"""
+    """Check disk space usage with animated bars"""
+    console.print()
+    console.print(Panel("[bold brand]DISK SPACE[/bold brand]", border_style="brand", box=box.ROUNDED))
+
     try:
         usage = psutil.disk_usage('/')
         free = usage.free / (1024**3)
@@ -165,16 +197,10 @@ def space():
         used = usage.used / (1024**3)
         pct = usage.percent
 
-        bar_len = 30
-        filled = int(pct / 100 * bar_len)
-        bar = "█" * filled + "░" * (bar_len - filled)
-
-        style = "success" if pct < 70 else ("warn" if pct < 90 else "red")
-
-        table = Table(box=box.ROUNDED, border_style=style, show_header=False, padding=(0, 2))
+        table = Table(box=box.ROUNDED, border_style="accent", show_header=False, padding=(0, 2))
         table.add_column(style="dim", ratio=1)
         table.add_column(ratio=3)
-        table.add_row("Disk", f"[{style}]{bar}[/{style}] {pct}%")
+        table.add_row("Disk", f"{_make_bar(pct)} {pct}%")
         table.add_row("Total", f"{total:.1f} GB")
         table.add_row("Used", f"{used:.1f} GB")
         table.add_row("Free", f"{free:.1f} GB")
@@ -187,6 +213,9 @@ def space():
 def info():
     """Detailed system information"""
     import sys
+
+    console.print()
+    console.print(Panel("[bold brand]SYSTEM INFO[/bold brand]", border_style="brand", box=box.ROUNDED))
 
     table = Table(box=box.ROUNDED, border_style="accent", show_header=False, padding=(0, 2))
     table.add_column(style="dim", ratio=1)
@@ -205,48 +234,218 @@ def info():
     table.add_row("Home", str(os.path.expanduser("~")))
     table.add_row("Shell", os.environ.get('SHELL', os.environ.get('COMSPEC', 'N/A')))
     table.add_row("CPU Cores", str(os.cpu_count()))
+
+    # RAM
+    try:
+        ram = psutil.virtual_memory()
+        table.add_row("Total RAM", f"{ram.total / (1024**3):.1f} GB")
+        table.add_row("Available RAM", f"{ram.available / (1024**3):.1f} GB")
+    except Exception:
+        pass
+
     console.print(table)
 
 
 @click.command()
 def health():
-    """System health with live CPU monitor"""
-    console.print(Panel("[bold brand]SYSTEM HEALTH[/bold brand]", border_style="brand", box=box.ROUNDED))
+    """System health with live animated CPU/RAM/Disk monitor"""
+    import random
 
-    # Sample CPU over 1 second for accuracy
-    cpu = psutil.cpu_percent(interval=1)
-    ram = psutil.virtual_memory()
-    disk = psutil.disk_usage('/')
+    console.print()
+    console.print(Panel(
+        "[bold brand]SYSTEM HEALTH - LIVE MONITOR[/bold brand]\n"
+        "[dim]Monitoring for 5 seconds... Press Ctrl+C to exit early[/dim]",
+        border_style="brand", box=box.DOUBLE_EDGE
+    ))
 
-    # CPU bar
-    cpu_bar_len = 30
-    cpu_filled = int(cpu / 100 * cpu_bar_len)
-    cpu_bar = "█" * cpu_filled + "░" * (cpu_bar_len - cpu_filled)
-    cpu_style = "success" if cpu < 50 else ("warn" if cpu < 80 else "red")
+    cpu_history = []
+    ram_history = []
 
-    # RAM bar
-    ram_pct = ram.percent
-    ram_bar_len = 30
-    ram_filled = int(ram_pct / 100 * ram_bar_len)
-    ram_bar = "█" * ram_filled + "░" * (ram_bar_len - ram_filled)
-    ram_style = "success" if ram_pct < 70 else ("warn" if ram_pct < 90 else "red")
+    try:
+        with Live(console=console, refresh_per_second=2, transient=False) as live:
+            layout = Layout()
+            layout.split_column(
+                Layout(name="header", size=3),
+                Layout(name="body"),
+                Layout(name="footer", size=3),
+            )
 
-    # Disk bar
-    disk_pct = disk.percent
-    disk_bar_len = 30
-    disk_filled = int(disk_pct / 100 * disk_bar_len)
-    disk_bar = "█" * disk_filled + "░" * (disk_bar_len - disk_filled)
-    disk_style = "success" if disk_pct < 70 else ("warn" if disk_pct < 90 else "red")
+            start = time.time()
+            while time.time() - start < 5:
+                cpu = psutil.cpu_percent(interval=0.5)
+                ram = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
 
-    table = Table(box=box.ROUNDED, border_style="accent", show_header=False, padding=(0, 2))
-    table.add_column("Metric", style="dim", ratio=1)
-    table.add_column("Usage", ratio=3)
-    table.add_column("Details", style="muted", ratio=2)
+                cpu_history.append(cpu)
+                ram_history.append(ram.percent)
+                if len(cpu_history) > 20:
+                    cpu_history.pop(0)
+                if len(ram_history) > 20:
+                    ram_history.pop(0)
 
-    table.add_row("CPU", f"[{cpu_style}]{cpu_bar}[/{cpu_style}] {cpu}%", f"{os.cpu_count()} cores")
-    table.add_row("RAM", f"[{ram_style}]{ram_bar}[/{ram_style}] {ram_pct}%", f"{ram.used//(1024**3)}/{ram.total//(1024**3)} GB")
-    table.add_row("Disk", f"[{disk_style}]{disk_bar}[/{disk_style}] {disk_pct}%", f"{disk.free//(1024**3)} GB free")
-    console.print(table)
+                elapsed = time.time() - start
+                remaining = max(0, 5 - elapsed)
+
+                # Header
+                header = Text()
+                header.append("  SYSTEM HEALTH", style="bold brand")
+                header.append(f"  |  {remaining:.0f}s remaining", style="dim")
+                layout["header"].update(Panel(header, box=box.SIMPLE))
+
+                # Build sparklines
+                def sparkline(values, width=30):
+                    if not values:
+                        return "░" * width
+                    mx = max(values) if max(values) > 0 else 1
+                    chars = "▁▂▃▄▅▆▇█"
+                    line = ""
+                    for v in values:
+                        idx = int((v / mx) * (len(chars) - 1))
+                        line += chars[min(idx, len(chars) - 1)]
+                    return line
+
+                # Body
+                body = Text()
+
+                # CPU
+                cpu_style = "success" if cpu < 50 else ("warn" if cpu < 80 else "red")
+                body.append("\n  CPU Usage\n", style="bold")
+                body.append(f"  {_make_bar(cpu)}  ")
+                body.append(f"[{cpu_style}]{cpu:.1f}%[/{cpu_style}]  ")
+                body.append(f"[dim]{os.cpu_count()} cores[/dim]\n")
+                body.append(f"  [dim]{sparkline(cpu_history)}[/dim]")
+
+                # RAM
+                ram_pct = ram.percent
+                ram_style = "success" if ram_pct < 70 else ("warn" if ram_pct < 90 else "red")
+                body.append(f"\n\n  RAM Usage\n", style="bold")
+                body.append(f"  {_make_bar(ram_pct)}  ")
+                body.append(f"[{ram_style}]{ram_pct:.1f}%[/{ram_style}]  ")
+                body.append(f"[dim]{ram.used // (1024**3)}/{ram.total // (1024**3)} GB[/dim]\n")
+                body.append(f"  [dim]{sparkline(ram_history)}[/dim]")
+
+                # Disk
+                disk_pct = disk.percent
+                disk_style = "success" if disk_pct < 70 else ("warn" if disk_pct < 90 else "red")
+                body.append(f"\n\n  Disk Usage\n", style="bold")
+                body.append(f"  {_make_bar(disk_pct)}  ")
+                body.append(f"[{disk_style}]{disk_pct:.0f}%[/{disk_style}]  ")
+                body.append(f"[dim]{disk.free // (1024**3)} GB free[/dim]")
+
+                layout["body"].update(Panel(body, box=box.ROUNDED, border_style="border"))
+                layout["footer"].update(Text("  [dim]Ctrl+C to exit[/dim]  ", justify="center"))
+                live.update(layout)
+
+        # Final summary
+        avg_cpu = sum(cpu_history) / len(cpu_history) if cpu_history else 0
+        console.print()
+        table = Table(box=box.ROUNDED, border_style="success", show_header=False, padding=(0, 2))
+        table.add_column("Metric", style="dim", ratio=1)
+        table.add_column("Avg", style="white", ratio=1)
+        table.add_column("Peak", style="white", ratio=1)
+
+        peak_cpu = max(cpu_history) if cpu_history else 0
+        peak_ram = max(ram_history) if ram_history else 0
+        avg_ram = sum(ram_history) / len(ram_history) if ram_history else 0
+
+        table.add_row("CPU", f"{avg_cpu:.1f}%", f"{peak_cpu:.1f}%")
+        table.add_row("RAM", f"{avg_ram:.1f}%", f"{peak_ram:.1f}%")
+        table.add_row("Disk", f"{disk.percent:.0f}%", f"{disk.free // (1024**3)} GB free")
+
+        console.print(Panel(
+            table,
+            title="[bold success]HEALTH SUMMARY[/bold success]",
+            border_style="success", box=box.DOUBLE_EDGE
+        ))
+    except KeyboardInterrupt:
+        console.print("\n[dim]Monitor stopped.[/dim]")
+
+
+@click.command()
+def sysmon():
+    """Real-time system monitor (continuous)"""
+    console.print()
+    console.print(Panel(
+        "[bold brand]SYSTEM MONITOR[/bold brand]\n[dim]Real-time resource monitoring - Press Ctrl+C to exit[/dim]",
+        border_style="brand", box=box.DOUBLE_EDGE
+    ))
+
+    cpu_history = []
+    ram_history = []
+    net_history = []
+
+    try:
+        prev_net = psutil.net_io_counters()
+
+        with Live(console=console, refresh_per_second=2, transient=True) as live:
+            while True:
+                cpu = psutil.cpu_percent(interval=0.3)
+                ram = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
+
+                # Network delta
+                curr_net = psutil.net_io_counters()
+                net_sent = (curr_net.bytes_sent - prev_net.bytes_sent) / 1024
+                net_recv = (curr_net.bytes_recv - prev_net.bytes_recv) / 1024
+                prev_net = curr_net
+
+                cpu_history.append(cpu)
+                ram_history.append(ram.percent)
+                net_history.append(net_sent + net_recv)
+                if len(cpu_history) > 40:
+                    cpu_history.pop(0)
+                if len(ram_history) > 40:
+                    ram_history.pop(0)
+                if len(net_history) > 40:
+                    net_history.pop(0)
+
+                def sparkline(values, width=35):
+                    if not values:
+                        return "░" * width
+                    mx = max(values) if max(values) > 0 else 1
+                    chars = "▁▂▃▄▅▆▇█"
+                    return "".join(chars[min(int((v / mx) * (len(chars) - 1)), len(chars) - 1)] for v in values)
+
+                # Top processes
+                top_procs = []
+                for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+                    try:
+                        info = proc.info
+                        if info['cpu_percent'] and info['cpu_percent'] > 0.5:
+                            top_procs.append(info)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                top_procs.sort(key=lambda x: x.get('cpu_percent', 0) or 0, reverse=True)
+                top_procs = top_procs[:5]
+
+                text = Text()
+                text.append(f"\n  CPU  {_make_bar(cpu)} ", style="")
+                cpu_s = "success" if cpu < 50 else ("warn" if cpu < 80 else "red")
+                text.append(f"[{cpu_s}]{cpu:.1f}%[/{cpu_s}]", style="")
+                text.append(f"  [dim]{sparkline(cpu_history)}[/dim]")
+
+                text.append(f"\n  RAM  {_make_bar(ram.percent)} ", style="")
+                ram_s = "success" if ram.percent < 70 else ("warn" if ram.percent < 90 else "red")
+                text.append(f"[{ram_s}]{ram.percent:.1f}%[/{ram_s}]", style="")
+                text.append(f"  [dim]{ram.used // (1024**3)}/{ram.total // (1024**3)} GB[/dim]")
+
+                text.append(f"\n  Disk {_make_bar(disk.percent)} ", style="")
+                text.append(f"[dim]{disk.free // (1024**3)} GB free[/dim]")
+
+                text.append(f"\n  NET  [dim]↑{net_sent:.0f} KB/s  ↓{net_recv:.0f} KB/s[/dim]")
+
+                if top_procs:
+                    text.append(f"\n\n  [bold]Top Processes:[/bold]")
+                    for p in top_procs:
+                        name = (p.get('name') or '?')[:15]
+                        cpu_v = p.get('cpu_percent') or 0
+                        mem_v = p.get('memory_percent') or 0
+                        text.append(f"\n  [dim]{name:<16} CPU:{cpu_v:5.1f}%  MEM:{mem_v:5.1f}%[/dim]")
+
+                live.update(Panel(text, box=box.ROUNDED, border_style="border"))
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Monitor stopped.[/dim]")
 
 
 @click.command()
@@ -260,7 +459,6 @@ def update_all():
     )
 
     if result.returncode != 0:
-        # Fallback
         result = subprocess.run(['pip', 'list', '--outdated'], capture_output=True, text=True)
         if result.stdout.strip():
             console.print(Panel(result.stdout.strip(), title="[info]Outdated Packages[/info]", border_style="warn", box=box.ROUNDED))
