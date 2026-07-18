@@ -1,6 +1,6 @@
 import click, subprocess, shlex, tempfile, time
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, check_ffmpeg, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, check_ffmpeg, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -38,7 +38,7 @@ def _run_ffmpeg_with_progress(cmd, description="Processing..."):
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=30),
+        BarColumn(bar_width=bar_width()),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TimeElapsedColumn(),
         console=console,
@@ -290,7 +290,7 @@ def gif():
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=30),
+        BarColumn(bar_width=bar_width()),
         TimeElapsedColumn(),
         console=console,
     ) as progress:
@@ -383,7 +383,7 @@ def compress(folder):
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=30),
+        BarColumn(bar_width=bar_width()),
         console=console,
     ) as progress:
         task = progress.add_task("[info]Compressing...[/info]", total=len(image_files))
