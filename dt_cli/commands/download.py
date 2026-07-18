@@ -1,6 +1,6 @@
 import click, subprocess, re
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, check_yt_dlp, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, check_yt_dlp, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, DownloadColumn
 from rich.table import Table
@@ -311,7 +311,7 @@ def _direct_image_download(url, filename, output_dir):
         with Progress(
             SpinnerColumn("dots"),
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30),
+            BarColumn(bar_width=bar_width()),
             DownloadColumn(),
             console=console,
         ) as progress:
