@@ -1,5 +1,5 @@
 import click, time, random, socket, shutil, os, base64
-from ..config import console, BORDER_ROUNDED
+from ..config import console, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, BarColumn, TextColumn
@@ -81,7 +81,7 @@ def port_scan(host, start, end):
     try:
         with Progress(
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=40),
+            BarColumn(bar_width=bar_width()),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             console=console,
         ) as progress:
@@ -152,7 +152,7 @@ def vault(file_path):
 
     with Progress(
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=30),
+        BarColumn(bar_width=bar_width()),
         console=console, transient=True,
     ) as progress:
         progress.add_task("[info]Encrypting/Decrypting...[/info]", total=None)
