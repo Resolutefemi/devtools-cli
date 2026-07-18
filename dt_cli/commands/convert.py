@@ -1,6 +1,6 @@
 import click, subprocess, os
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, check_ffmpeg, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, check_ffmpeg, bar_width, BORDER_ROUNDED
 from rich.prompt import Prompt, IntPrompt
 from rich.table import Table
 from rich.panel import Panel
@@ -20,7 +20,7 @@ def _ffmpeg_convert(input_path, output_path, extra_args=None):
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=30),
+        BarColumn(bar_width=bar_width()),
         TimeElapsedColumn(),
         console=console,
     ) as progress:
