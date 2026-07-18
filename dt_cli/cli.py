@@ -1,18 +1,20 @@
 try:
     import click
 except ImportError:
-
     import sys
     if "setup" not in sys.argv:
-        print("❌ Error: Renance DevTools dependencies not found.")
-        print("To fix this, please run the installer in the project folder:")
-        print("   Windows: install.bat")
-        print("   Unix:    bash install.sh")
-    sys.exit(1)
+        print("Error: Renance DevTools dependencies not found.")
+        print("Install with:  pip install renance-dt")
+        sys.exit(1)
 
-from colorama import Fore, Style
-from pathlib import Path
+from .config import console, DT_THEME, IS_TERMUX
+from rich.panel import Panel
+from rich.table import Table
+from rich.columns import Columns
+from rich.text import Text
+from rich import box
 
+# ── Import all command modules ─────────────────────────────────────
 from .commands.files import send, clean, organize, find, big, duplicate, tree, backup, where, fcp
 from .commands.media import join, music, shrink, clip, gif, extract, compress
 from .commands.check import check, doctor
@@ -20,96 +22,134 @@ from .commands.git import gac, repo, undo, pr, branch_clean, stash_all, changelo
 from .commands.deploy import ship, login, logout, live, env_push, logs
 from .commands.system import ports, kill_port, wifi, ip, battery, space, info, health, update_all, setup, update
 from .commands.phone import serve_phone, torch, storage, sms, hotspot, wifi_scan, record_audio, backup_photos
-from .commands.utils import up, qr, todo, note, timer, convert, weather, paste, pomo, shorten, status
+from .commands.utils import up, qr, todo, note, timer, weather, paste, pomo, shorten, status
 from .commands.net import ping, myip, dns, scan_network, speed, whois, ip_info
 from .commands.crypto import passgen, hash, b64encode, b64decode
-from .commands.dev import ignore, license, readme
+from .commands.dev import ignore, license_cmd, readme
 from .commands.hacker import matrix, port_scan, sniff, vault
 from .commands.pro import screenshot, joke, json_fmt, kill_all, search, links, rename
 from .commands.extra import extra_cmds
+from .commands.convert import convert
+from .commands.download import dm
+
 
 @click.group(invoke_without_command=True)
 @click.pass_context
 def cli(ctx):
+    """Renance DevTools - One command to rule them all."""
     if ctx.invoked_subcommand is None:
         show_help()
 
+
 def show_help():
-    from .config import IS_TERMUX
-    platform = "📱 Termux" if IS_TERMUX else "💻"
-    click.echo(f"\n{Fore.CYAN}{Style.BRIGHT}🚀 Renance DevTools v3.0 {platform}{Style.RESET_ALL}")
-    click.echo(f"{Fore.WHITE}Built with ❤️ by Resolutefemi\n{Style.RESET_ALL}")
-    
+    """Render the beautiful help dashboard using Rich."""
+    from rich import box
+
+    platform = "Termux" if IS_TERMUX else "Desktop"
+
+    # Build the header
+    header = Text()
+    header.append("  R E N A N C E   D E V T O O L S\n", style="bold brand")
+    header.append(f"  v4.0.0  |  {platform}  |  ", style="dim")
+    header.append("by Resolutefemi", style="muted")
+    header.append("\n  One command to rule them all\n", style="dim")
+
+    console.print(Panel(header, border_style="brand", box=box.DOUBLE_EDGE, padding=(1, 2)))
+
     all_commands = sorted(cli.list_commands(None))
-    
     categories = {
-        "📁 Files": ["fcp", "send", "clean", "organize", "find", "big", "duplicate", "tree", "backup", "where", "search", "rename", "touch2", "mkdir2", "rm2", "ls2", "pwd2", "size", "ext", "basename", "dirname", "exists", "isdir", "isfile", "count_files", "count_dirs", "md5_file", "sha1_file", "sha256_file"],
-        "🎬 Media": ["join", "music", "shrink", "clip", "gif", "extract", "compress", "screenshot", "links", "coffee"],
-        "🌐 Network": ["speed", "status", "ping", "dns", "whois", "scan-network", "myip", "ip2", "ip-info", "ip_loc", "http_get", "http_head", "http_options", "url_parse"],
-        "🕶️ Hacker": ["matrix", "vault", "port-scan", "sniff", "kill-all", "mac_addr", "ipv4_gen", "port_gen", "user_agent", "password", "pin", "port_check"],
-        "🚀 Deploy": ["deploy", "login", "logout", "live", "env-push", "logs"],
-        "🐙 Git": ["git-install", "gh", "gac", "repo", "pr", "undo", "sync", "changelog", "branch-clean", "stash-all"],
-        "💻 System": ["ports", "kill-port", "ip", "battery", "space", "info", "health", "update", "update-all", "setup", "cpu_count", "env_var", "path_list", "mem_total", "mem_avail", "disk_io", "net_io", "uptime", "whoami2", "clear2", "date2", "sleep2"],
-        "📱 Phone": ["serve-phone", "torch", "storage", "sms", "hotspot", "wifi-scan", "record-audio", "backup-photos", "wifi"],
-        "🛠️ Utils": ["shorten", "pomo", "weather", "qr", "todo", "note", "timer", "convert", "paste", "up", "json", "lorem", "hex_color", "rgb_color", "json_mock", "base64_img", "tz", "timestamp", "days_until", "week_num"],
-        "🔐 Crypto": ["passgen", "hash", "b64enc", "b64encode", "b64dec", "b64decode", "hexenc", "hexdec", "rot13", "morse", "uuid"],
-        "👨‍💻 Dev": ["ignore", "license", "readme", "check", "doctor", "github"],
-        "🧮 Math": ["add", "sub", "mul", "div", "mod", "pow", "sqrt", "sin", "cos", "tan", "log", "log10", "ceil", "floor", "round", "abs", "fact", "c2f", "f2c", "bmi", "mortgage", "tip", "tax", "bin2dec", "dec2bin", "hex2dec", "dec2hex", "oct2dec", "dec2oct", "kg2lb", "lb2kg", "m2ft", "ft2m"],
-        "🔤 Text": ["upper", "lower", "title", "reverse", "length", "wordcount", "slugify", "camelcase", "snakecase", "kebabcase", "urlenc", "urldec", "echo2"],
-        "🎲 Fun": ["random", "randint", "choice", "shuffle", "coin", "dice", "magic8", "rps", "catfact", "dogfact", "chuck", "yesno", "nationalize", "genderize", "bored", "bitcoin", "riddles", "advice", "quote", "trump", "kanye", "pokefact", "name_gen", "joke"]
+        "Files": ["fcp", "send", "clean", "organize", "find", "big", "duplicate", "tree", "backup", "where", "search", "rename", "touch2", "mkdir2", "rm2", "ls2", "pwd2", "size", "ext", "basename", "dirname", "exists", "isdir", "isfile", "count_files", "count_dirs", "md5_file", "sha1_file", "sha256_file"],
+        "Media": ["join", "music", "shrink", "clip", "gif", "extract", "compress", "screenshot", "convert", "dm"],
+        "Network": ["speed", "status", "ping", "dns", "whois", "scan-network", "myip", "ip-info", "ip2", "http_get", "http_head", "http_options", "url_parse", "ip_loc"],
+        "Hacker": ["matrix", "vault", "port-scan", "sniff", "kill-all", "mac_addr", "ipv4_gen", "port_gen", "user_agent", "password", "pin", "port_check"],
+        "Deploy": ["deploy", "login", "logout", "live", "env-push", "logs"],
+        "Git": ["git-install", "gh", "gac", "repo", "pr", "undo", "sync", "changelog", "branch-clean", "stash-all"],
+        "System": ["ports", "kill-port", "ip", "battery", "space", "info", "health", "update", "update-all", "setup", "cpu_count", "env_var", "path_list", "mem_total", "mem_avail", "disk_io", "net_io", "uptime", "whoami2", "clear2", "date2", "sleep2"],
+        "Phone": ["serve-phone", "torch", "storage", "sms", "hotspot", "wifi-scan", "record-audio", "backup-photos", "wifi"],
+        "Utils": ["shorten", "pomo", "weather", "qr", "todo", "note", "timer", "paste", "up", "json", "lorem", "hex_color", "rgb_color", "json_mock", "base64_img", "tz", "timestamp", "days_until", "week_num"],
+        "Crypto": ["passgen", "hash", "b64enc", "b64encode", "b64dec", "b64decode", "hexenc", "hexdec", "rot13", "morse", "uuid"],
+        "Dev": ["ignore", "license", "readme", "check", "doctor", "github"],
+        "Math": ["add", "sub", "mul", "div", "mod", "pow", "sqrt", "sin", "cos", "tan", "log", "log10", "ceil", "floor", "round", "abs", "fact", "c2f", "f2c", "bmi", "mortgage", "tip", "tax", "bin2dec", "dec2bin", "hex2dec", "dec2hex", "oct2dec", "dec2oct", "kg2lb", "lb2kg", "m2ft", "ft2m"],
+        "Text": ["upper", "lower", "title", "reverse", "length", "wordcount", "slugify", "camelcase", "snakecase", "kebabcase", "urlenc", "urldec", "echo2"],
+        "Fun": ["random", "randint", "choice", "shuffle", "coin", "dice", "magic8", "rps", "catfact", "dogfact", "chuck", "yesno", "nationalize", "genderize", "bored", "bitcoin", "riddles", "advice", "quote", "trump", "kanye", "pokefact", "name_gen", "joke", "coffee"],
     }
 
-    import shutil
-    term_cols, _ = shutil.get_terminal_size()
-    col_width = 18
-    num_cols = max(1, term_cols // col_width)
-
-    displayed_cmds = set()
-
+    # Build a 2-column table per category
+    displayed = set()
     for cat_name, cmd_list in categories.items():
-        # Filter to only include commands that actually exist in cli
         cmds = [c for c in cmd_list if c in all_commands]
-        if cmds:
-            click.echo(f"{Fore.MAGENTA}{Style.BRIGHT}{cat_name}{Style.RESET_ALL}")
-            for i in range(0, len(cmds), num_cols):
-                chunk = cmds[i:i + num_cols]
-                line = "".join(f"{Fore.GREEN}{cmd:<{col_width}}{Style.RESET_ALL}" for cmd in chunk)
-                click.echo(line)
-            click.echo("") # Empty line between categories
-            displayed_cmds.update(cmds)
+        if not cmds:
+            continue
+        displayed.update(cmds)
 
-    # Catch any missing commands
-    remaining = sorted(list(set(all_commands) - displayed_cmds - {"help", "about"}))
+        # Create mini-table for this category
+        table = Table(box=None, show_header=False, padding=(0, 1), expand=True)
+        table.add_column(style="cmd", ratio=1)
+        table.add_column(style="cmd", ratio=1)
+        table.add_column(style="cmd", ratio=1)
+
+        # Pad to multiple of 3
+        while len(cmds) % 3 != 0:
+            cmds.append("")
+        for i in range(0, len(cmds), 3):
+            row = cmds[i:i+3]
+            table.add_row(*row)
+
+        console.print(f"  [bold cat]{cat_name}[/bold cat]")
+        console.print(table)
+        console.print()
+
+    remaining = sorted(set(all_commands) - displayed - {"help", "about"})
     if remaining:
-        click.echo(f"{Fore.MAGENTA}{Style.BRIGHT}📦 Uncategorized{Style.RESET_ALL}")
-        for i in range(0, len(remaining), num_cols):
-            chunk = remaining[i:i + num_cols]
-            line = "".join(f"{Fore.GREEN}{cmd:<{col_width}}{Style.RESET_ALL}" for cmd in chunk)
-            click.echo(line)
-        click.echo("")
+        table = Table(box=None, show_header=False, padding=(0, 1), expand=True)
+        table.add_column(style="cmd", ratio=1)
+        table.add_column(style="cmd", ratio=1)
+        table.add_column(style="cmd", ratio=1)
+        while len(remaining) % 3 != 0:
+            remaining.append("")
+        for i in range(0, len(remaining), 3):
+            table.add_row(*remaining[i:i+3])
+        console.print(f"  [bold cat]Other[/bold cat]")
+        console.print(table)
 
-    click.echo(f"{Fore.YELLOW}Total Commands: {len(all_commands)}{Style.RESET_ALL}")
-    click.echo(f"{Fore.YELLOW}Usage: dt COMMAND [ARGS]...{Style.RESET_ALL}")
-    click.echo(f"{Fore.CYAN}Run 'dt about' for project information.\n{Style.RESET_ALL}")
+    footer = Text()
+    footer.append(f"\n  {len(all_commands)} commands available", style="bold")
+    footer.append("  |  ", style="dim")
+    footer.append("dt COMMAND [ARGS]", style="info")
+    footer.append("  |  ", style="dim")
+    footer.append("dt help", style="info")
+    console.print(footer)
+    console.print()
+
 
 @click.command()
 def help_cmd():
     """Show the interactive help dashboard"""
     show_help()
 
+
 @click.command()
 def about():
     """About Renance DevTools"""
-    click.echo(f"\n{Fore.CYAN}{Style.BRIGHT}🚀 Renance DevTools (renance-dt) v3.0{Style.RESET_ALL}")
-    click.echo(f"{Fore.GREEN}Built by: {Fore.WHITE}Resolutefemi")
-    click.echo(f"{Fore.GREEN}Email:    {Fore.WHITE}hello@renance.dev")
-    click.echo(f"{Fore.GREEN}Status:   {Fore.WHITE}Production Ready")
-    click.echo(f"\n{Fore.YELLOW}Renance DevTools is a unified CLI ecosystem designed to bridge the gap between")
-    click.echo(f"standard OS tools and developer needs. From multi-threaded copying to")
-    click.echo(f"one-click deployments and hacker-style diagnostics, it is the only")
-    click.echo(f"command you will ever need.{Style.RESET_ALL}\n")
+    table = Table(box=box.ROUNDED, border_style="brand", show_header=False, padding=(0, 2))
+    table.add_column(style="info", ratio=1)
+    table.add_column(style="white", ratio=2)
+    table.add_row("Name", "[bold brand]Renance DevTools (renance-dt)[/bold brand]")
+    table.add_row("Version", "4.0.0")
+    table.add_row("Author", "[white]Resolutefemi[/white]")
+    table.add_row("Email", "[info]hello@renance.dev[/info]")
+    table.add_row("License", "[success]MIT[/success]")
+    table.add_row("Status", "[success]Production Ready[/success]")
+    console.print(table)
+    console.print()
+    console.print("[dim]Renance DevTools is a unified CLI ecosystem designed to bridge the gap between[/dim]")
+    console.print("[dim]standard OS tools and developer needs. From multi-threaded copying to[/dim]")
+    console.print("[dim]one-click deployments and hacker-style diagnostics, it is the only[/dim]")
+    console.print("[dim]command you will ever need.[/dim]")
+    console.print()
 
-# Register all commands
+
+# ── Register all commands ──────────────────────────────────────────
 commands_list = [
     send, clean, organize, find, big, duplicate, tree, backup, where, fcp,
     join, music, shrink, clip, gif, extract, compress,
@@ -118,30 +158,32 @@ commands_list = [
     ship, login, logout, live, env_push, logs,
     ports, kill_port, wifi, ip, battery, space, info, health, update_all, setup, update,
     serve_phone, torch, storage, sms, hotspot, wifi_scan, record_audio, backup_photos,
-    up, qr, todo, note, timer, convert, weather, paste, pomo, shorten, status,
+    up, qr, todo, note, timer, weather, paste, pomo, shorten, status,
     ping, myip, dns, scan_network, speed, whois, ip_info,
     passgen, hash, b64encode, b64decode,
-    ignore, license, readme, help_cmd, about,
+    ignore, license_cmd, readme, help_cmd, about,
     matrix, port_scan, sniff, vault,
-    screenshot, joke, json_fmt, kill_all, search, links, rename
+    screenshot, joke, json_fmt, kill_all, search, links, rename,
+    convert, dm,
 ]
 
 commands_list.extend(extra_cmds)
 
 for cmd in commands_list:
-    # Rename commands for better CLI naming
-    if cmd == help_cmd:
+    if cmd is help_cmd:
         cli.add_command(cmd, name='help')
-    elif cmd == ship:
+    elif cmd is ship:
         cli.add_command(cmd, name='deploy')
-    elif cmd == json_fmt:
+    elif cmd is json_fmt:
         cli.add_command(cmd, name='json')
-    elif cmd == kill_all:
+    elif cmd is kill_all:
         cli.add_command(cmd, name='kill-all')
-    elif cmd == port_scan:
+    elif cmd is port_scan:
         cli.add_command(cmd, name='port-scan')
-    elif cmd == scan_network:
+    elif cmd is scan_network:
         cli.add_command(cmd, name='scan-network')
+    elif cmd is license_cmd:
+        cli.add_command(cmd, name='license')
     else:
         cli.add_command(cmd)
 

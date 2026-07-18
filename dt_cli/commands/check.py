@@ -1,60 +1,113 @@
-import click, sys, subprocess, os
+import click, subprocess, shutil
 from pathlib import Path
-from ..config import Colors
+from ..config import console, BORDER_ROUNDED
+from rich.panel import Panel
+from rich.table import Table
+from rich import box
+
 
 @click.command()
 def check():
     """Run basic project checks"""
-    click.echo(f"{Colors.CYAN}Running basic checks...{Colors.RESET}")
-    
-    if Path('package.json').exists():
-        click.echo(f"{Colors.GREEN}✅ Node.js project detected{Colors.RESET}")
-    elif Path('requirements.txt').exists():
-        click.echo(f"{Colors.GREEN}✅ Python project detected{Colors.RESET}")
-    elif Path('Cargo.toml').exists():
-        click.echo(f"{Colors.GREEN}✅ Rust project detected{Colors.RESET}")
-    elif Path('go.mod').exists():
-        click.echo(f"{Colors.GREEN}✅ Go project detected{Colors.RESET}")
-    else:
-        click.echo(f"{Colors.YELLOW}⚠️ No specific project configuration found (Node/Python/Rust/Go){Colors.RESET}")
+    console.print()
+    console.print(Panel("[bold brand]PROJECT CHECK[/bold brand]", border_style="brand", box=box.ROUNDED))
 
-    if Path('.git').exists():
-        click.echo(f"{Colors.GREEN}✅ Git initialized{Colors.RESET}")
-    else:
-        click.echo(f"{Colors.YELLOW}⚠️ Git not initialized{Colors.RESET}")
+    table = Table(box=box.SIMPLE, padding=(0, 2))
+    table.add_column("Check", style="dim")
+    table.add_column("Result", ratio=2)
+
+    checks = [
+        ("Node.js", "package.json"),
+        ("Python", "requirements.txt"),
+        ("Rust", "Cargo.toml"),
+        ("Go", "go.mod"),
+        ("Git", ".git"),
+        ("Docker", "Dockerfile"),
+        ("CI/CD", ".github"),
+    ]
+
+    detected = []
+    for name, marker in checks:
+        if Path(marker).exists() or (marker.startswith('.') and Path(marker).is_dir()):
+            table.add_row(name, "[success]Detected[/success]")
+            detected.append(name)
+
+    if not detected:
+        table.add_row("Project", "[yellow]No specific config detected[/yellow]")
+
+    console.print(table)
+
 
 @click.command()
 def doctor():
     """Run comprehensive system diagnostic"""
-    click.echo(f"{Colors.CYAN}Running diagnostics...{Colors.RESET}")
-    tools = ['git', 'node', 'python', 'pip', 'ffmpeg']
-    all_good = True
-    for tool in tools:
-        try:
-            subprocess.run([tool, '-version' if tool == 'ffmpeg' else '--version'], capture_output=True, check=True)
-            click.echo(f"{Colors.GREEN}✅ {tool} is installed{Colors.RESET}")
-        except (FileNotFoundError, subprocess.CalledProcessError):
-            click.echo(f"{Colors.RED}❌ {tool} is missing or not working{Colors.RESET}")
-            if tool == 'ffmpeg':
-                click.echo(f"{Colors.YELLOW}   👉 Tip: Install ffmpeg from ffmpeg.org or via package manager (choco install ffmpeg on Windows).{Colors.RESET}")
-            all_good = False
-    
-    click.echo(f"\n{Colors.CYAN}Checking Python Dependencies...{Colors.RESET}")
-    deps = ['click', 'colorama', 'requests', 'qrcode', 'PIL', 'psutil', 'speedtest', 'mss', 'pyjokes']
-    for dep in deps:
-        try:
-            if dep == 'PIL':
-                import PIL
-            elif dep == 'speedtest':
-                import speedtest
-            else:
-                __import__(dep)
-            click.echo(f"{Colors.GREEN}✅ {dep} is available{Colors.RESET}")
-        except ImportError:
-            click.echo(f"{Colors.RED}❌ {dep} is missing{Colors.RESET}")
-            all_good = False
+    console.print()
+    console.print(Panel("[bold brand]SYSTEM DOCTOR[/bold brand]", border_style="brand", box=box.ROUNDED))
 
-    if all_good:
-        click.echo(f"\n{Colors.CYAN}✅ Everything looks good!{Colors.RESET}")
-    else:
-        click.echo(f"\n{Colors.YELLOW}⚠️ Some tools or dependencies are missing. Run 'install.bat' to fix Python dependencies.{Colors.RESET}")
+    # Check external tools
+    console.print("\n[bold]External Tools[/bold]")
+    tools = [
+        ('git', ['git', '--version']),
+        ('node', ['node', '--version']),
+        ('python', ['python', '--version']),
+        ('pip', ['pip', '--version']),
+        ('ffmpeg', ['ffmpeg', '-version']),
+        ('gh', ['gh', '--version']),
+        ('docker', ['docker', '--version']),
+    ]
+
+    tool_table = Table(box=box.SIMPLE, padding=(0, 2))
+    tool_table.add_column("Tool", style="dim")
+    tool_table.add_column("Status", ratio=2)
+    tool_table.add_column("Version", style="muted")
+
+    for name, cmd in tools:
+        if shutil.which(cmd[0]):
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                version = result.stdout.strip().split('\n')[0][:50]
+                tool_table.add_row(name, "[success]Installed[/success]", version)
+            except Exception:
+                tool_table.add_row(name, "[success]Installed[/success]", "")
+        else:
+            tool_table.add_row(name, "[red]Missing[/red]", "")
+
+    console.print(tool_table)
+
+    # Check Python dependencies
+    console.print("\n[bold]Python Dependencies[/bold]")
+    deps = [
+        ('click', 'click'),
+        ('rich', 'rich'),
+        ('requests', 'requests'),
+        ('qrcode', 'qrcode'),
+        ('Pillow', 'PIL'),
+        ('psutil', 'psutil'),
+        ('mss', 'mss'),
+        ('pyjokes', 'pyjokes'),
+    ]
+
+    dep_table = Table(box=box.SIMPLE, padding=(0, 2))
+    dep_table.add_column("Package", style="dim")
+    dep_table.add_column("Status", ratio=2)
+
+    for name, module in deps:
+        try:
+            __import__(module)
+            dep_table.add_row(name, "[success]OK[/success]")
+        except ImportError:
+            dep_table.add_row(name, "[red]Missing[/red]")
+
+    console.print(dep_table)
+
+    # Platform info
+    console.print("\n[bold]Platform[/bold]")
+    import platform
+    info_table = Table(box=box.SIMPLE, padding=(0, 2))
+    info_table.add_column("Key", style="dim")
+    info_table.add_column("Value", style="white")
+    info_table.add_row("OS", f"{platform.system()} {platform.release()}")
+    info_table.add_row("Python", platform.python_version())
+    info_table.add_row("Architecture", platform.machine())
+    console.print(info_table)
+    console.print()

@@ -1,81 +1,96 @@
 import click, subprocess, os
 from pathlib import Path
-from ..config import Colors
+from ..config import console
+from rich.prompt import Prompt, Confirm
+from rich.panel import Panel
+from rich import box
+
 
 @click.command()
 def ship():
     """Deploy application (Vercel/Netlify/Render)"""
-    click.echo(f"{Colors.CYAN}🚀 Renance Deployment Engine{Colors.RESET}")
-    provider = click.prompt(f"{Colors.BLUE}Choose provider (1: Vercel, 2: Netlify, 3: Render){Colors.RESET}", type=click.Choice(['1','2','3']))
-    
+    console.print()
+    console.print(Panel("[bold brand]DEPLOYMENT ENGINE[/bold brand]", border_style="brand", box=box.DOUBLE_EDGE))
+
+    console.print("\n[bold]Choose provider:[/bold]")
+    console.print("  [accent]1[/accent]. Vercel")
+    console.print("  [accent]2[/accent]. Netlify")
+    console.print("  [accent]3[/accent]. Render")
+    provider = Prompt.ask("[info]Provider[/info]", choices=["1", "2", "3"])
+
     use_shell = os.name == 'nt'
-    
-    if provider == '1': # Vercel
-        # Check login
-        click.echo(f"{Colors.CYAN}Checking Vercel authentication... (this may take a moment on first run){Colors.RESET}")
-        # Using --yes to bypass "Need to install..." prompt which causes hangs
+
+    if provider == '1':
+        console.print("[info]Checking Vercel authentication...[/info]")
         check = subprocess.run(['npx', '--yes', 'vercel', 'whoami'], shell=use_shell, capture_output=True)
-        
+
         if check.returncode != 0:
-            click.echo(f"{Colors.YELLOW}You are not logged in or Vercel is not initialized.{Colors.RESET}")
+            console.print("[yellow]Not logged in. Starting login...[/yellow]")
             subprocess.run(['npx', '--yes', 'vercel', 'login'], shell=use_shell)
-        
-        name = click.prompt(f"{Colors.BLUE}Project Name (leave blank for auto){Colors.RESET}", default="")
-        click.echo(f"{Colors.CYAN}Deploying to Vercel...{Colors.RESET}")
+
+        name = Prompt.ask("[info]Project name (blank for auto)[/info]", default="")
+        console.print("[info]Deploying to Vercel...[/info]")
         cmd = ['npx', '--yes', 'vercel', '--prod']
-        if name: cmd.extend(['--name', name])
+        if name:
+            cmd.extend(['--name', name])
         subprocess.run(cmd, shell=use_shell)
 
-    elif provider == '2': # Netlify
-        # Check login
-        click.echo(f"{Colors.CYAN}Checking Netlify authentication...{Colors.RESET}")
+    elif provider == '2':
+        console.print("[info]Checking Netlify authentication...[/info]")
         check = subprocess.run(['npx', '--yes', 'netlify-cli', 'status'], shell=use_shell, capture_output=True)
         if b"Not logged in" in check.stdout or check.returncode != 0:
-            click.echo(f"{Colors.YELLOW}You are not logged in to Netlify.{Colors.RESET}")
+            console.print("[yellow]Not logged in. Starting login...[/yellow]")
             subprocess.run(['npx', '--yes', 'netlify-cli', 'login'], shell=use_shell)
-            
-        name = click.prompt(f"{Colors.BLUE}Site Name (leave blank for auto){Colors.RESET}", default="")
-        click.echo(f"{Colors.CYAN}Deploying to Netlify...{Colors.RESET}")
+
+        name = Prompt.ask("[info]Site name (blank for auto)[/info]", default="")
+        console.print("[info]Deploying to Netlify...[/info]")
         cmd = ['npx', '--yes', 'netlify-cli', 'deploy', '--prod']
-        if name: cmd.extend(['--site', name])
+        if name:
+            cmd.extend(['--site', name])
         subprocess.run(cmd, shell=use_shell)
-        
-    elif provider == '3': # Render
-        hook = click.prompt(f"{Colors.BLUE}Enter Render Deploy Hook URL{Colors.RESET}", default="")
+
+    elif provider == '3':
+        hook = Prompt.ask("[info]Render Deploy Hook URL[/info]", default="")
         if hook:
+            console.print("[info]Triggering Render deployment...[/info]")
             subprocess.run(['curl', '-X', 'POST', hook], shell=use_shell)
-            click.echo(f"\n{Colors.GREEN}✅ Deployment triggered on Render!{Colors.RESET}")
+            console.print("[success]Deployment triggered on Render![/success]")
         else:
-            click.echo(f"{Colors.YELLOW}Render requires a Deploy Hook.{Colors.RESET}")
+            console.print("[yellow]Render requires a Deploy Hook URL.[/yellow]")
+
 
 @click.command()
 def login():
-    """Login to provider"""
-    click.echo(f"{Colors.CYAN}Logging in to Vercel...{Colors.RESET}")
+    """Login to Vercel"""
+    console.print("[info]Logging in to Vercel...[/info]")
     subprocess.run(['npx', 'vercel', 'login'], shell=os.name == 'nt')
+
 
 @click.command()
 def logout():
-    """Logout from provider"""
-    click.echo(f"{Colors.CYAN}Logging out of Vercel...{Colors.RESET}")
+    """Logout from Vercel"""
+    console.print("[info]Logging out of Vercel...[/info]")
     subprocess.run(['npx', 'vercel', 'logout'], shell=os.name == 'nt')
-    click.echo(f"{Colors.GREEN}✅ Logged out{Colors.RESET}")
+    console.print("[success]Logged out.[/success]")
+
 
 @click.command()
 def live():
-    """Check live status"""
-    click.echo(f"{Colors.CYAN}Checking deployment status...{Colors.RESET}")
+    """Check deployment status"""
+    console.print("[info]Checking deployment status...[/info]")
     subprocess.run(['npx', 'vercel', 'ls'], shell=os.name == 'nt')
 
-@click.command()
+
+@click.command(name='env-push')
 def env_push():
-    """Push environment variables"""
-    click.echo(f"{Colors.CYAN}Pushing .env to Vercel...{Colors.RESET}")
+    """Pull environment variables from Vercel"""
+    console.print("[info]Pulling .env from Vercel...[/info]")
     subprocess.run(['npx', 'vercel', 'env', 'pull'], shell=os.name == 'nt')
-    click.echo(f"{Colors.GREEN}✅ Done{Colors.RESET}")
+    console.print("[success]Done.[/success]")
+
 
 @click.command()
 def logs():
     """View application logs"""
-    click.echo(f"{Colors.CYAN}Tailing Vercel logs...{Colors.RESET}")
+    console.print("[info]Tailing Vercel logs...[/info]")
     subprocess.run(['npx', 'vercel', 'logs'], shell=os.name == 'nt')
