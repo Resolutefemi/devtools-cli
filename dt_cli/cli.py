@@ -7,7 +7,7 @@ except ImportError:
         print("Install with:  pip install renance-dt")
         sys.exit(1)
 
-from .config import console, DT_THEME, IS_TERMUX
+from .config import console, DT_THEME, IS_TERMUX, is_narrow, help_columns
 from rich.panel import Panel
 from rich.table import Table
 from rich.columns import Columns
@@ -47,19 +47,26 @@ def cli(ctx):
 
 
 def show_help():
-    """Render the beautiful help dashboard using Rich."""
+    """Render the beautiful help dashboard using Rich — adapts to terminal width."""
     from rich import box
 
     platform = "Termux" if IS_TERMUX else "Desktop"
+    narrow = is_narrow()
+    ncols = help_columns()
 
-    # Build the header
+    # Build the header — shorter on narrow screens
     header = Text()
-    header.append("  R E N A N C E   D E V T O O L S\n", style="bold brand")
-    header.append(f"  v3.1.0  |  {platform}  |  ", style="dim")
-    header.append("by Resolutefemi", style="muted")
-    header.append("\n  One command to rule them all\n", style="dim")
+    if narrow:
+        header.append("  DEVTOOLS\n", style="bold brand")
+        header.append(f"  v3.1.0  |  {platform}\n", style="dim")
+        header.append("  by Resolutefemi", style="muted")
+    else:
+        header.append("  R E N A N C E   D E V T O O L S\n", style="bold brand")
+        header.append(f"  v3.1.0  |  {platform}  |  ", style="dim")
+        header.append("by Resolutefemi", style="muted")
+        header.append("\n  One command to rule them all\n", style="dim")
 
-    console.print(Panel(header, border_style="brand", box=box.DOUBLE_EDGE, padding=(1, 2)))
+    console.print(Panel(header, border_style="brand", box=box.DOUBLE_EDGE, padding=(0, 1) if narrow else (1, 2)))
 
     all_commands = sorted(cli.list_commands(None))
     categories = {
@@ -79,50 +86,39 @@ def show_help():
         "Fun": ["random", "randint", "choice", "shuffle", "coin", "dice", "magic8", "rps", "catfact", "dogfact", "chuck", "yesno", "nationalize", "genderize", "bored", "bitcoin", "riddles", "advice", "quote", "trump", "kanye", "pokefact", "name_gen", "joke", "coffee"],
     }
 
-    # Build a 3-column table per category
+    def render_category(cat_name, cmds):
+        """Render a single category with adaptive columns."""
+        # Pad to multiple of ncols
+        while len(cmds) % ncols != 0:
+            cmds.append("")
+        table = Table(box=None, show_header=False, padding=(0, 1), expand=True)
+        for _ in range(ncols):
+            table.add_column(style="cmd", ratio=1)
+        for i in range(0, len(cmds), ncols):
+            table.add_row(*cmds[i:i+ncols])
+        console.print(f"  [bold cat]{cat_name}[/bold cat]")
+        console.print(table)
+        console.print()
+
     displayed = set()
     for cat_name, cmd_list in categories.items():
         cmds = [c for c in cmd_list if c in all_commands]
         if not cmds:
             continue
         displayed.update(cmds)
-
-        # Create mini-table for this category
-        table = Table(box=None, show_header=False, padding=(0, 1), expand=True)
-        table.add_column(style="cmd", ratio=1)
-        table.add_column(style="cmd", ratio=1)
-        table.add_column(style="cmd", ratio=1)
-
-        # Pad to multiple of 3
-        while len(cmds) % 3 != 0:
-            cmds.append("")
-        for i in range(0, len(cmds), 3):
-            row = cmds[i:i+3]
-            table.add_row(*row)
-
-        console.print(f"  [bold cat]{cat_name}[/bold cat]")
-        console.print(table)
-        console.print()
+        render_category(cat_name, cmds)
 
     remaining = sorted(set(all_commands) - displayed - {"help", "about"})
     if remaining:
-        table = Table(box=None, show_header=False, padding=(0, 1), expand=True)
-        table.add_column(style="cmd", ratio=1)
-        table.add_column(style="cmd", ratio=1)
-        table.add_column(style="cmd", ratio=1)
-        while len(remaining) % 3 != 0:
-            remaining.append("")
-        for i in range(0, len(remaining), 3):
-            table.add_row(*remaining[i:i+3])
-        console.print(f"  [bold cat]Other[/bold cat]")
-        console.print(table)
+        render_category("Other", remaining)
 
     footer = Text()
-    footer.append(f"\n  {len(all_commands)} commands available", style="bold")
-    footer.append("  |  ", style="dim")
-    footer.append("dt COMMAND [ARGS]", style="info")
-    footer.append("  |  ", style="dim")
-    footer.append("dt help", style="info")
+    footer.append(f"\n  {len(all_commands)} commands", style="bold")
+    if not narrow:
+        footer.append("  |  ", style="dim")
+        footer.append("dt COMMAND [ARGS]", style="info")
+        footer.append("  |  ", style="dim")
+        footer.append("dt help", style="info")
     console.print(footer)
     console.print()
 
