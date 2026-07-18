@@ -1,61 +1,90 @@
-import click, shutil, os
+import click, shutil, os, datetime, hashlib, concurrent.futures
 from pathlib import Path
-from colorama import Fore, Style
-from ..config import get_save_path, Colors, IGNORE_DIRS
+from ..config import console, get_save_path, ask_filename, confirm_save, IGNORE_DIRS, BORDER_ROUNDED
+from rich.panel import Panel
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.prompt import Prompt
+from rich import box
+
 
 @click.command()
 def send():
-    """Zip current folder for sharing"""
+    """Zip current folder and save to Desktop/Downloads"""
     folder = Path.cwd()
-    name = click.prompt(f"{Colors.BLUE}Zip name{Colors.RESET}", default=folder.name)
+    default_name = folder.name
+    name = ask_filename(default_name)
 
     zip_path = get_save_path('desktop') / f"{name}.zip"
-    click.echo(f"{Colors.CYAN}Creating zip...{Colors.RESET}")
 
-    shutil.make_archive(str(zip_path.with_suffix('')), 'zip', folder,
-                       ignore=lambda d, files: [f for f in files if f in IGNORE_DIRS])
+    console.print(f"[info]Creating zip archive...[/info]")
+    with Progress(
+        SpinnerColumn("dots"),
+        TextColumn("[progress.description]{task.description}"),
+        console=console, transient=True,
+    ) as progress:
+        progress.add_task("[info]Zipping...[/info]", total=None)
+        shutil.make_archive(
+            str(zip_path.with_suffix('')), 'zip', folder,
+            ignore=lambda d, files: [f for f in files if f in IGNORE_DIRS]
+        )
 
-    size = zip_path.stat().st_size / 1024 / 1024
-    click.echo(f"{Colors.GREEN}✅ Saved to: {zip_path}{Colors.RESET}")
-    click.echo(f"{Colors.CYAN}Size: {size:.1f} MB{Colors.RESET}")
+    if zip_path.exists():
+        size = zip_path.stat().st_size / (1024 * 1024)
+        console.print(f"[dim]Size: {size:.1f} MB[/dim]")
+        confirm_save(zip_path)
+    else:
+        console.print("[red]Failed to create zip.[/red]")
+
 
 @click.command()
 def clean():
-    """Clean junk files"""
-    patterns = ['*.pyc', '*.log', '*.tmp', '.DS_Store', 'Thumbs.db']
+    """Clean junk files from current directory"""
+    patterns = ['*.pyc', '*.log', '*.tmp', '.DS_Store', 'Thumbs.db', '*.egg-info']
     count = 0
+    size_freed = 0
+
     for pattern in patterns:
         for f in Path.cwd().rglob(pattern):
             if not any(d in str(f) for d in IGNORE_DIRS):
                 try:
+                    size_freed += f.stat().st_size
                     f.unlink()
                     count += 1
-                except:
+                except Exception:
                     pass
 
     for d in Path.cwd().rglob('__pycache__'):
-        if d.is_dir():
+        if d.is_dir() and not any(ignore in str(d) for ignore in IGNORE_DIRS):
             try:
+                for f in d.rglob('*'):
+                    size_freed += f.stat().st_size
                 shutil.rmtree(d)
                 count += 1
-            except:
+            except Exception:
                 pass
 
-    click.echo(f"{Colors.GREEN}✅ Cleaned {count} files{Colors.RESET}")
+    if count > 0:
+        console.print(f"[success]Cleaned {count} files/folders[/success]")
+        console.print(f"[dim]Freed {size_freed / 1024:.1f} KB[/dim]")
+    else:
+        console.print("[success]Already clean![/success]")
+
 
 @click.command()
 def organize():
-    """Organize Downloads folder"""
+    """Organize Downloads folder by file type"""
     downloads = get_save_path('downloads')
     moved = 0
 
     types = {
-        'images': ['.jpg','.jpeg','.png','.gif','.webp'],
-        'videos': ['.mp4','.mov','.avi','.mkv'],
-        'documents': ['.pdf','.doc','.docx','.txt'],
-        'music': ['.mp3','.wav','.flac'],
+        'images': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'],
+        'videos': ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.3gp'],
+        'documents': ['.pdf', '.doc', '.docx', '.txt', '.xls', '.xlsx', '.ppt', '.pptx', '.csv'],
+        'music': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a'],
     }
 
+    console.print(f"[info]Organizing {downloads}...[/info]")
     for f in downloads.iterdir():
         if f.is_file():
             for folder, exts in types.items():
@@ -63,139 +92,242 @@ def organize():
                     dest = get_save_path(folder) / f.name
                     try:
                         shutil.move(str(f), str(dest))
+                        console.print(f"  [dim]{f.name} -> {folder}/[/dim]")
                         moved += 1
-                    except:
+                    except Exception:
                         pass
                     break
 
-    click.echo(f"{Colors.GREEN}✅ Organized {moved} files{Colors.RESET}")
+    console.print(f"[success]Organized {moved} files[/success]")
+
 
 @click.command()
 @click.argument('name')
 def find(name):
-    """Find file by name"""
-    click.echo(f"{Colors.CYAN}Searching for '{name}'...{Colors.RESET}")
+    """Find file by name (searches home directory)"""
+    console.print(f"[info]Searching for '{name}'...[/info]")
     found = []
-    for f in Path.home().rglob(f'*{name}*'):
-        if f.is_file() and not any(d in str(f) for d in IGNORE_DIRS):
-            found.append(f)
-            click.echo(f"{Colors.GREEN}{f}{Colors.RESET}")
-            if len(found) >= 10:
-                break
-    if not found:
-        click.echo(f"{Colors.YELLOW}Not found{Colors.RESET}")
+
+    with Progress(
+        SpinnerColumn("dots"),
+        TextColumn("[progress.description]{task.description}"),
+        console=console, transient=True,
+    ) as progress:
+        progress.add_task("[info]Searching...[/info]", total=None)
+        for f in Path.home().rglob(f'*{name}*'):
+            if f.is_file() and not any(d in str(f) for d in IGNORE_DIRS):
+                found.append(f)
+                if len(found) >= 15:
+                    break
+
+    if found:
+        table = Table(box=box.SIMPLE, padding=(0, 1))
+        table.add_column("Path", style="white")
+        for f in found:
+            table.add_row(str(f))
+        console.print(table)
+        console.print(f"[dim]Found {len(found)} result(s)[/dim]")
+    else:
+        console.print("[yellow]No files found.[/yellow]")
+
 
 @click.command()
 def big():
-    """Show biggest files"""
+    """Show top 10 biggest files in current directory"""
+    console.print("[info]Scanning for large files...[/info]")
     files = []
     for f in Path.cwd().rglob('*'):
         if f.is_file() and not any(d in str(f) for d in IGNORE_DIRS):
             try:
                 files.append((f, f.stat().st_size))
-            except:
+            except Exception:
                 pass
 
     files.sort(key=lambda x: x[1], reverse=True)
 
-    click.echo(f"{Colors.CYAN}Top 10 biggest files:{Colors.RESET}")
-    for f, size in files[:10]:
-        size_mb = size / 1024 / 1024
-        color = Colors.RED if size_mb > 1000 else Colors.YELLOW if size_mb > 100 else Colors.GREEN
-        click.echo(f"{color}{size_mb:7.1f} MB {f.relative_to(Path.cwd())}{Colors.RESET}")
+    if files:
+        table = Table(box=box.ROUNDED, border_style="warn", title="[warn]TOP 10 BIGGEST FILES[/warn]")
+        table.add_column("Size", style="warn", justify="right")
+        table.add_column("File", style="white")
+        for f, size in files[:10]:
+            if size > 1024 * 1024 * 1024:
+                size_str = f"{size / (1024**3):.1f} GB"
+                style = "red"
+            elif size > 1024 * 1024 * 100:
+                size_str = f"{size / (1024**2):.1f} MB"
+                style = "yellow"
+            else:
+                size_str = f"{size / 1024:.1f} KB"
+                style = "white"
+            table.add_row(size_str, str(f.relative_to(Path.cwd())), style=style)
+        console.print(table)
+    else:
+        console.print("[yellow]No files found.[/yellow]")
+
 
 @click.command()
 def duplicate():
-    """Find duplicate files"""
-    import hashlib
+    """Find duplicate files by hash"""
+    console.print("[info]Scanning for duplicates...[/info]")
     seen = {}
     dups = []
 
-    for f in Path.cwd().rglob('*'):
-        if f.is_file() and f.stat().st_size < 100*1024*1024:
-            if any(d in str(f) for d in IGNORE_DIRS):
-                continue
-            try:
-                h = hashlib.md5(f.read_bytes()).hexdigest()
-                if h in seen:
-                    dups.append((f, seen[h]))
-                else:
-                    seen[h] = f
-            except:
-                pass
+    with Progress(
+        SpinnerColumn("dots"),
+        TextColumn("[progress.description]{task.description}"),
+        console=console, transient=True,
+    ) as progress:
+        progress.add_task("[info]Hashing files...[/info]", total=None)
+        for f in Path.cwd().rglob('*'):
+            if f.is_file() and f.stat().st_size < 100 * 1024 * 1024:
+                if any(d in str(f) for d in IGNORE_DIRS):
+                    continue
+                try:
+                    h = hashlib.md5(f.read_bytes()).hexdigest()
+                    if h in seen:
+                        dups.append((f, seen[h]))
+                    else:
+                        seen[h] = f
+                except Exception:
+                    pass
 
     if dups:
-        click.echo(f"{Colors.YELLOW}Found {len(dups)} duplicates:{Colors.RESET}")
+        table = Table(box=box.ROUNDED, border_style="warn", title="[warn]DUPLICATES FOUND[/warn]")
+        table.add_column("Duplicate", style="red")
+        table.add_column("Original", style="white")
         for f1, f2 in dups[:10]:
-            click.echo(f"{Colors.RED}{f1.name}{Colors.RESET}")
+            table.add_row(f1.name, f2.name)
+        console.print(table)
+        console.print(f"[dim]Found {len(dups)} duplicate(s)[/dim]")
     else:
-        click.echo(f"{Colors.GREEN}No duplicates found{Colors.RESET}")
+        console.print("[success]No duplicates found![/success]")
+
 
 @click.command()
 def tree():
     """Show folder tree"""
-    for root, dirs, files in os.walk('.'):
-        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
-        level = root.count(os.sep)
-        indent = ' ' * 2 * level
-        click.echo(f"{Colors.CYAN}{indent}{os.path.basename(root)}/{Colors.RESET}")
-        subindent = ' ' * 2 * (level + 1)
-        for f in files[:5]:
-            click.echo(f"{Colors.WHITE}{subindent}{f}{Colors.RESET}")
+    from rich.tree import Tree
+    from rich import Tree as RichTree
+
+    tree_obj = Tree(f"[bold]{Path.cwd().name}[/bold]")
+    _build_tree(tree_obj, Path.cwd(), 0)
+
+    with console.pager():
+        console.print(tree_obj)
+
+
+def _build_tree(tree, path, depth, max_depth=4):
+    if depth > max_depth:
+        return
+    try:
+        entries = sorted(path.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
+    except PermissionError:
+        return
+
+    # Filter ignored
+    entries = [e for e in entries if e.name not in IGNORE_DIRS and not e.name.startswith('.')]
+
+    for i, entry in enumerate(entries[:20]):  # Limit per directory
+        if entry.is_dir():
+            branch = tree.add(f"[info]{entry.name}/[/info]")
+            _build_tree(branch, entry, depth + 1, max_depth)
+        else:
+            tree.add(entry.name)
+
 
 @click.command()
 def backup():
-    """Create timestamped backup"""
-    import datetime
+    """Create timestamped backup of current folder"""
     name = f"{Path.cwd().name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
     dest = get_save_path('documents') / f"{name}.zip"
-    shutil.make_archive(str(dest.with_suffix('')), 'zip', '.')
-    click.echo(f"{Colors.GREEN}✅ Backup: {dest}{Colors.RESET}")
+
+    console.print(f"[info]Creating backup...[/info]")
+    with Progress(
+        SpinnerColumn("dots"),
+        TextColumn("[progress.description]{task.description}"),
+        console=console, transient=True,
+    ) as progress:
+        progress.add_task("[info]Backing up...[/info]", total=None)
+        shutil.make_archive(str(dest.with_suffix('')), 'zip', '.',
+                           ignore=lambda d, files: [f for f in files if f in IGNORE_DIRS])
+
+    if dest.exists():
+        size = dest.stat().st_size / (1024 * 1024)
+        console.print(f"[dim]Backup size: {size:.1f} MB[/dim]")
+        confirm_save(dest)
+
 
 @click.command()
 @click.argument('src')
 @click.argument('dest')
 def fcp(src, dest):
-    """High-speed Multi-threaded Copy for big files/folders"""
-    import shutil, concurrent.futures
-    from pathlib import Path
-
+    """High-speed multi-threaded file copy"""
     src_path = Path(src)
     dest_path = Path(dest)
 
     if not src_path.exists():
-        click.echo(f"{Colors.RED}Source does not exist.{Colors.RESET}")
+        console.print(f"[red]Source does not exist: {src}[/red]")
         return
 
-    click.echo(f"{Colors.CYAN}🚀 Initializing High-Speed Engine...{Colors.RESET}")
-
-    def copy_file(f):
-        rel = f.relative_to(src_path)
-        target = dest_path / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(f, target)
+    console.print(f"[info]Starting high-speed copy...[/info]")
 
     if src_path.is_file():
-        shutil.copy2(src_path, dest_path)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        with Progress(
+            SpinnerColumn("dots"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=30),
+            console=console,
+        ) as progress:
+            task = progress.add_task("[info]Copying...[/info]", total=src_path.stat().st_size)
+            # Chunked copy for large files
+            chunk_size = 1024 * 1024 * 8  # 8MB chunks
+            with open(src_path, 'rb') as f_in, open(dest_path, 'wb') as f_out:
+                while True:
+                    chunk = f_in.read(chunk_size)
+                    if not chunk:
+                        break
+                    f_out.write(chunk)
+                    progress.advance(task, len(chunk))
+        console.print(f"[success]Copied {src_path.name}[/success]")
     else:
         files = [f for f in src_path.rglob('*') if f.is_file()]
-        click.echo(f"{Colors.YELLOW}Copying {len(files)} files using 8 threads...{Colors.RESET}")
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            executor.map(copy_file, files)
 
-    click.echo(f"{Colors.GREEN}✅ Fast-Copy Complete!{Colors.RESET}")
+        def copy_file(f):
+            rel = f.relative_to(src_path)
+            target = dest_path / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, target)
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=30),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"[info]Copying {len(files)} files (8 threads)...[/info]", total=len(files))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                futures = [executor.submit(copy_file, f) for f in files]
+                for future in concurrent.futures.as_completed(futures):
+                    future.result()
+                    progress.advance(task)
+
+        console.print(f"[success]Fast-copied {len(files)} files[/success]")
+
 
 @click.command()
 def where():
-    """Show current location info"""
+    """Show current location with git branch"""
     cwd = Path.cwd()
-    click.echo(f"{Colors.CYAN}Location: {cwd}{Colors.RESET}")
+    table = Table(box=box.ROUNDED, border_style="accent", show_header=False, padding=(0, 2))
+    table.add_column(style="dim", ratio=1)
+    table.add_column(style="white", ratio=2)
+    table.add_row("Path", str(cwd))
+    table.add_row("Folder", cwd.name)
 
     if (cwd / '.git').exists():
-        import subprocess
         try:
-            branch = subprocess.check_output(['git', 'branch', '--show-current'], text=True).strip()
-            click.echo(f"{Colors.GREEN}Git branch: {branch}{Colors.RESET}")
-        except:
+            branch = subprocess.check_output(['git', 'branch', '--show-current'], text=True, stderr=subprocess.PIPE).strip()
+            table.add_row("Git", f"[success]{branch}[/success]")
+        except Exception:
             pass
+    console.print(table)
