@@ -1,4 +1,4 @@
-# Renance DevTools (renance-dt) v5.0
+# Renance DevTools (renance-dt) v3.1
 
 <div align="center">
   <h3><a href="https://devtools.pxxl.click">Official Website & Interactive Tutorial</a></h3>
@@ -12,7 +12,7 @@
 
 ---
 
-## What's New in v5.0
+## What's New in v3.1
 
 - **Live Speed Test** - `dt speed` now works without any external tools, with fast.com-style animated fluctuating display
 - **12 New Media Commands** - trim audio, merge audio, audio speed change, video speed change, reverse video, add audio, mute video, watermark, thumbnail extraction, audio/video info
