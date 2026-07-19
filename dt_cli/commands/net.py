@@ -1,5 +1,5 @@
 import click, subprocess, socket, time, threading, random, math
-from ..config import console, bar_width, BORDER_ROUNDED
+from ..config import console, bar_width, BORDER_ROUNDED, ensure_pip_module
 from rich.panel import Panel
 from rich.table import Table
 from rich.layout import Layout
@@ -90,6 +90,8 @@ def ping(host):
 @click.command()
 def myip():
     """Get public IP address with animated display"""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return
     import requests
     console.print()
     with Live(console=console, refresh_per_second=2, transient=True) as live:
@@ -196,6 +198,8 @@ def scan_network():
 
 def _pure_python_speedtest():
     """Pure Python speed test using HTTP downloads - no external dependencies."""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return {'download': 0, 'upload': 0, 'ping': 0, 'server': 'None', 'success': False}
     import requests
 
     # Test servers for download speed
@@ -436,6 +440,8 @@ def speed():
 @click.argument('domain')
 def whois(domain):
     """Get WHOIS information for a domain"""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return
     import requests
     console.print(f"[info]Fetching WHOIS for {domain}...[/info]")
     try:
@@ -464,6 +470,8 @@ def whois(domain):
 @click.argument('ip_addr', required=False)
 def ip_info(ip_addr):
     """Get location info for an IP address"""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return
     import requests
     target = ip_addr if ip_addr else ""
     label = target if target else "your IP"
