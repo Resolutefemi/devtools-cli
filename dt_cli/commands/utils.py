@@ -1,4 +1,4 @@
-import click, datetime, urllib.request, json, time, sys
+import click, datetime, urllib.request, json, time, sys, os
 from pathlib import Path
 from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module, BORDER_ROUNDED
 from rich.panel import Panel
