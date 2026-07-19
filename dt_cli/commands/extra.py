@@ -1,6 +1,6 @@
-import click, requests, random, math, uuid, base64, urllib.parse, os, subprocess, datetime, hashlib, time, platform
+import click, random, math, uuid, base64, urllib.parse, os, subprocess, datetime, hashlib, time, platform
 from pathlib import Path
-from ..config import console
+from ..config import console, ensure_pip_module
 
 extra_cmds = []
 
@@ -16,6 +16,13 @@ def register(name, doc, action):
             console.print(f"[red]Error: {e}[/red]")
     cmd.__doc__ = doc
     extra_cmds.append(cmd)
+
+def _api_get(url, timeout=5):
+    """Helper: lazy-import requests and do GET."""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return None
+    import requests
+    return requests.get(url, timeout=timeout)
 
 # TEXT COMMANDS
 register('upper', 'To uppercase', lambda a: ' '.join(a).upper())
@@ -60,29 +67,91 @@ register('c2f', 'Celsius to Fahrenheit', lambda a: (float(a[0]) * 9/5) + 32)
 register('f2c', 'Fahrenheit to Celsius', lambda a: (float(a[0]) - 32) * 5/9)
 register('bmi', 'BMI Calculator (kg, m)', lambda a: f"{float(a[0]) / (float(a[1]) ** 2):.1f}")
 
-# API / FUN COMMANDS
-register('catfact', 'Random cat fact', lambda a: requests.get('https://catfact.ninja/fact', timeout=5).json()['fact'])
-register('dogfact', 'Random dog fact', lambda a: requests.get('https://dog-api.kinduff.com/api/facts', timeout=5).json()['facts'][0])
-register('chuck', 'Chuck Norris joke', lambda a: requests.get('https://api.chucknorris.io/jokes/random', timeout=5).json()['value'])
-register('yesno', 'Random yes or no', lambda a: requests.get('https://yesno.wtf/api', timeout=5).json()['answer'])
-register('agify', 'Guess age by name', lambda a: requests.get(f'https://api.agify.io?name={a[0]}', timeout=5).json()['age'])
-register('genderize', 'Guess gender by name', lambda a: requests.get(f'https://api.genderize.io?name={a[0]}', timeout=5).json()['gender'])
-register('nationalize', 'Guess nationality by name', lambda a: requests.get(f'https://api.nationalize.io?name={a[0]}', timeout=5).json()['country'][0]['country_id'])
-register('bored', 'Random activity', lambda a: requests.get('https://www.boredapi.com/api/activity', timeout=5).json()['activity'])
-register('ip2', 'Get your IP', lambda a: requests.get('https://api.ipify.org', timeout=5).text)
-register('bitcoin', 'Current Bitcoin price', lambda a: requests.get('https://api.coindesk.com/v1/bpi/currentprice.json', timeout=5).json()['bpi']['USD']['rate'] + ' USD')
-register('github', 'GitHub user info', lambda a: str(requests.get(f'https://api.github.com/users/{a[0]}', timeout=5).json().get('public_repos', 'User not found')) + " public repos")
-register('riddles', 'Random riddle', lambda a: requests.get('https://riddles-api.vercel.app/random', timeout=5).json()['riddle'])
-register('advice', 'Random advice', lambda a: requests.get('https://api.adviceslip.com/advice', timeout=5).json()['slip']['advice'])
-register('quote', 'Inspirational quote', lambda a: requests.get('https://api.quotable.io/random', timeout=5).json()['content'])
-register('trump', 'Trump quote', lambda a: requests.get('https://api.whatdoestrumpthink.com/api/v1/quotes/random', timeout=5).json()['message'])
-register('kanye', 'Kanye quote', lambda a: requests.get('https://api.kanye.rest', timeout=5).json()['quote'])
-register('pokefact', 'Pokemon name by ID', lambda a: requests.get(f'https://pokeapi.co/api/v2/pokemon/{a[0] if a else random.randint(1,151)}', timeout=5).json()['name'].title())
-register('coffee', 'Random coffee image URL', lambda a: requests.get('https://coffee.alexflipnote.dev/random.json', timeout=5).json().get('file', 'No image'))
-register('name_gen', 'Random name', lambda a: (lambda r: f"{r['results'][0]['name']['first']} {r['results'][0]['name']['last']}")(requests.get('https://randomuser.me/api/', timeout=5).json()))
+# API / FUN COMMANDS (lazy-load requests)
+def _catfact(a):
+    r = _api_get('https://catfact.ninja/fact')
+    return r.json()['fact'] if r else None
+def _dogfact(a):
+    r = _api_get('https://dog-api.kinduff.com/api/facts')
+    return r.json()['facts'][0] if r else None
+def _chuck(a):
+    r = _api_get('https://api.chucknorris.io/jokes/random')
+    return r.json()['value'] if r else None
+def _yesno(a):
+    r = _api_get('https://yesno.wtf/api')
+    return r.json()['answer'] if r else None
+def _agify(a):
+    r = _api_get(f'https://api.agify.io?name={a[0]}')
+    return r.json()['age'] if r else None
+def _genderize(a):
+    r = _api_get(f'https://api.genderize.io?name={a[0]}')
+    return r.json()['gender'] if r else None
+def _nationalize(a):
+    r = _api_get(f'https://api.nationalize.io?name={a[0]}')
+    return r.json()['country'][0]['country_id'] if r and r.json().get('country') else None
+def _bored(a):
+    r = _api_get('https://www.boredapi.com/api/activity')
+    return r.json()['activity'] if r else None
+def _ip2(a):
+    r = _api_get('https://api.ipify.org')
+    return r.text if r else None
+def _bitcoin(a):
+    r = _api_get('https://api.coindesk.com/v1/bpi/currentprice.json')
+    return r.json()['bpi']['USD']['rate'] + ' USD' if r else None
+def _github_info(a):
+    r = _api_get(f'https://api.github.com/users/{a[0]}')
+    return str(r.json().get('public_repos', 'User not found')) + " public repos" if r else None
+def _riddles(a):
+    r = _api_get('https://riddles-api.vercel.app/random')
+    return r.json()['riddle'] if r else None
+def _advice(a):
+    r = _api_get('https://api.adviceslip.com/advice')
+    return r.json()['slip']['advice'] if r else None
+def _quote(a):
+    r = _api_get('https://api.quotable.io/random')
+    return r.json()['content'] if r else None
+def _trump(a):
+    r = _api_get('https://api.whatdoestrumpthink.com/api/v1/quotes/random')
+    return r.json()['message'] if r else None
+def _kanye(a):
+    r = _api_get('https://api.kanye.rest')
+    return r.json()['quote'] if r else None
+def _pokefact(a):
+    pid = a[0] if a else random.randint(1, 151)
+    r = _api_get(f'https://pokeapi.co/api/v2/pokemon/{pid}')
+    return r.json()['name'].title() if r else None
+def _coffee(a):
+    r = _api_get('https://coffee.alexflipnote.dev/random.json')
+    return r.json().get('file', 'No image') if r else None
+def _name_gen(a):
+    r = _api_get('https://randomuser.me/api/')
+    if r:
+        d = r.json()
+        return f"{d['results'][0]['name']['first']} {d['results'][0]['name']['last']}"
+    return None
+
+register('catfact', 'Random cat fact', _catfact)
+register('dogfact', 'Random dog fact', _dogfact)
+register('chuck', 'Chuck Norris joke', _chuck)
+register('yesno', 'Random yes or no', _yesno)
+register('agify', 'Guess age by name', _agify)
+register('genderize', 'Guess gender by name', _genderize)
+register('nationalize', 'Guess nationality by name', _nationalize)
+register('bored', 'Random activity', _bored)
+register('ip2', 'Get your IP', _ip2)
+register('bitcoin', 'Current Bitcoin price', _bitcoin)
+register('github', 'GitHub user info', _github_info)
+register('riddles', 'Random riddle', _riddles)
+register('advice', 'Random advice', _advice)
+register('quote', 'Inspirational quote', _quote)
+register('trump', 'Trump quote', _trump)
+register('kanye', 'Kanye quote', _kanye)
+register('pokefact', 'Pokemon name by ID', _pokefact)
+register('coffee', 'Random coffee image URL', _coffee)
+register('name_gen', 'Random name', _name_gen)
 
 # OS / SYSTEM WRAPPERS
-register('touch2', 'Create empty file', lambda a: open(a[0], 'a').close() or None)
+register('touch2', 'Create empty file', lambda a: Path(a[0]).touch() or None)
 register('mkdir2', 'Create directory', lambda a: os.makedirs(a[0], exist_ok=True) or None)
 register('rm2', 'Remove file', lambda a: os.remove(a[0]) or None)
 register('ls2', 'List files', lambda a: '\n'.join(sorted(os.listdir(a[0] if a else '.'))))
@@ -102,10 +171,23 @@ register('dice', 'Roll a dice', lambda a: random.randint(1, 6))
 register('magic8', 'Magic 8 Ball', lambda a: random.choice(['It is certain', 'Without a doubt', 'You may rely on it', 'Yes definitely', 'It is decidedly so', 'As I see it, yes', 'Most likely', 'Yes', 'Outlook good', 'Signs point to yes', 'Reply hazy try again', 'Ask again later', 'Better not tell you now', 'Cannot predict now', 'Concentrate and ask again', "Don't count on it", 'My reply is no', 'My sources say no', 'Outlook not so good', 'Very doubtful']))
 register('rps', 'Rock Paper Scissors', lambda a: f"You: {a[0].title()}, Me: {random.choice(['Rock', 'Paper', 'Scissors'])}")
 
-# NETWORKING
-register('http_get', 'HTTP GET', lambda a: requests.get(a[0], timeout=10).text[:1000] + '...')
-register('http_head', 'HTTP HEAD', lambda a: str(dict(requests.head(a[0], timeout=10).headers)))
-register('http_options', 'HTTP OPTIONS', lambda a: str(dict(requests.options(a[0], timeout=10).headers)))
+# NETWORKING (lazy-load requests)
+def _http_get(a):
+    r = _api_get(a[0], timeout=10)
+    return r.text[:1000] + '...' if r else None
+def _http_head(a):
+    r = _api_get(a[0], timeout=10)
+    return str(dict(r.headers)) if r else None
+def _http_options(a):
+    if not ensure_pip_module('requests', display_name='requests'):
+        return None
+    import requests
+    r = requests.options(a[0], timeout=10)
+    return str(dict(r.headers))
+
+register('http_get', 'HTTP GET', _http_get)
+register('http_head', 'HTTP HEAD', _http_head)
+register('http_options', 'HTTP OPTIONS', _http_options)
 register('url_parse', 'Parse URL', lambda a: str(urllib.parse.urlparse(a[0])))
 register('mac_addr', 'Random MAC address', lambda a: ':'.join(f"{random.randint(0, 255):02x}" for _ in range(6)))
 register('ipv4_gen', 'Random IPv4', lambda a: '.'.join(str(random.randint(0, 255)) for _ in range(4)))
@@ -165,7 +247,7 @@ register('lb2kg', 'Lbs to KG', lambda a: float(a[0]) / 2.20462)
 register('m2ft', 'Meters to Feet', lambda a: float(a[0]) * 3.28084)
 register('ft2m', 'Feet to Meters', lambda a: float(a[0]) / 3.28084)
 
-# TIME & DATE (FIXED: now imports datetime properly)
+# TIME & DATE
 register('tz', 'Current Timezone', lambda a: time.tzname[0])
 register('timestamp', 'Current Unix timestamp', lambda a: int(time.time()))
 register('days_until', 'Days until YYYY-MM-DD', lambda a: (datetime.datetime.strptime(a[0], '%Y-%m-%d') - datetime.datetime.now()).days)
@@ -175,14 +257,36 @@ register('week_num', 'Current ISO week number', lambda a: datetime.datetime.now(
 register('cpu_count', 'CPU core count', lambda a: os.cpu_count())
 register('env_var', 'Get env variable', lambda a: os.environ.get(a[0], "Not Found"))
 
-# PATH LIST (FIXED: cross-platform separator)
+# PATH LIST
 def _path_list(args):
     sep = ';' if os.name == 'nt' else ':'
     return '\n'.join(os.environ.get('PATH', '').split(sep))
 register('path_list', 'System PATH entries', _path_list)
 
-register('mem_total', 'Total RAM', lambda a: f"{__import__('psutil').virtual_memory().total / (1024**3):.2f} GB")
-register('mem_avail', 'Available RAM', lambda a: f"{__import__('psutil').virtual_memory().available / (1024**3):.2f} GB")
-register('disk_io', 'Disk IO stats', lambda a: str(__import__('psutil').disk_io_counters()))
-register('net_io', 'Network IO stats', lambda a: str(__import__('psutil').net_io_counters()))
-register('uptime', 'System uptime', lambda a: f"{(time.time() - __import__('psutil').boot_time()) / 3600:.2f} hours")
+# SYSTEM STATS (lazy-load psutil)
+def _mem_total(a):
+    if not ensure_pip_module('psutil', display_name='psutil'): return None
+    import psutil
+    return f"{psutil.virtual_memory().total / (1024**3):.2f} GB"
+def _mem_avail(a):
+    if not ensure_pip_module('psutil', display_name='psutil'): return None
+    import psutil
+    return f"{psutil.virtual_memory().available / (1024**3):.2f} GB"
+def _disk_io(a):
+    if not ensure_pip_module('psutil', display_name='psutil'): return None
+    import psutil
+    return str(psutil.disk_io_counters())
+def _net_io(a):
+    if not ensure_pip_module('psutil', display_name='psutil'): return None
+    import psutil
+    return str(psutil.net_io_counters())
+def _uptime(a):
+    if not ensure_pip_module('psutil', display_name='psutil'): return None
+    import psutil
+    return f"{(time.time() - psutil.boot_time()) / 3600:.2f} hours"
+
+register('mem_total', 'Total RAM', _mem_total)
+register('mem_avail', 'Available RAM', _mem_avail)
+register('disk_io', 'Disk IO stats', _disk_io)
+register('net_io', 'Network IO stats', _net_io)
+register('uptime', 'System uptime', _uptime)
