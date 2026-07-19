@@ -1,4 +1,4 @@
-import os
+import os, subprocess, shutil, sys
 from pathlib import Path
 
 IS_TERMUX = 'com.termux' in os.environ.get('PREFIX', '')
@@ -10,6 +10,154 @@ IS_NARROW = False  # updated after Console init
 
 CONFIG_DIR = Path.home() / '.dt'
 CONFIG_DIR.mkdir(exist_ok=True)
+
+# ── Lazy Dependency Auto-Installer ─────────────────────────────────
+# Tracks which deps have already been installed this session to avoid repeats
+_installed_this_session = set()
+
+def ensure_cli_tool(name, pip_name=None, display_name=None):
+    """Check if a CLI tool is available; if not, auto-install it.
+
+    Args:
+        name: command name to check (e.g. 'yt-dlp', 'ffmpeg')
+        pip_name: pip package name if different from name (default: same as name)
+        display_name: human-readable name for messages (default: name)
+
+    Returns:
+        True if tool is available (was already there or was successfully installed)
+    """
+    if shutil.which(name) is not None:
+        return True
+
+    display = display_name or name
+    pip_pkg = pip_name or name
+
+    if name in _installed_this_session:
+        return False
+
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.panel import Panel
+
+    console.print()
+    console.print(Panel(
+        f"[bold warn]{display} is not installed[/bold warn]\n"
+        f"[dim]Auto-installing {display} now...[/dim]",
+        border_style="warn", box=BORDER_ROUNDED
+    ))
+
+    install_cmds = []
+
+    if IS_TERMUX:
+        install_cmds = [
+            ['pkg', 'install', '-y', pip_pkg],
+            ['pip', 'install', '--user', pip_pkg],
+        ]
+    elif IS_WINDOWS:
+        install_cmds = [
+            [sys.executable, '-m', 'pip', 'install', '--user', pip_pkg],
+            ['pip', 'install', '--user', pip_pkg],
+        ]
+    elif IS_MACOS:
+        install_cmds = [
+            [sys.executable, '-m', 'pip', 'install', '--user', pip_pkg],
+            ['pip3', 'install', '--user', pip_pkg],
+            ['brew', 'install', pip_pkg],
+        ]
+    else:
+        # Linux
+        install_cmds = [
+            [sys.executable, '-m', 'pip', 'install', '--user', pip_pkg],
+            ['pip3', 'install', '--user', pip_pkg],
+            ['sudo', 'apt', 'install', '-y', name],
+        ]
+
+    with Progress(
+        SpinnerColumn("dots"),
+        TextColumn(f"[progress.description]Installing {display}...[/progress.description]"),
+        console=console, transient=True
+    ) as progress:
+        progress.add_task("installing", total=None)
+        for cmd in install_cmds:
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=120
+                )
+                if result.returncode == 0:
+                    # Verify it's actually available now
+                    if shutil.which(name) is not None:
+                        _installed_this_session.add(name)
+                        console.print(f"[success]{display} installed successfully![/success]\n")
+                        return True
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
+
+    _installed_this_session.add(name)
+    console.print(f"[red]Could not auto-install {display}.[/red]")
+    console.print(f"[dim]Try manually: pip install {pip_pkg}[/dim]\n")
+    return False
+
+
+def ensure_pip_module(module_name, pip_name=None, display_name=None):
+    """Check if a Python module is importable; if not, auto-install via pip.
+
+    Args:
+        module_name: import name (e.g. 'requests', 'PIL', 'qrcode')
+        pip_name: pip package name if different (e.g. 'Pillow' for 'PIL')
+        display_name: human-readable name for messages
+
+    Returns:
+        True if module is available
+    """
+    display = display_name or (pip_name or module_name)
+    pip_pkg = pip_name or module_name
+
+    try:
+        __import__(module_name)
+        return True
+    except ImportError:
+        pass
+
+    if module_name in _installed_this_session:
+        return False
+
+    from rich.panel import Panel
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
+    console.print()
+    console.print(Panel(
+        f"[bold warn]{display} is not installed[/bold warn]\n"
+        f"[dim]Auto-installing {display} now...[/dim]",
+        border_style="warn", box=BORDER_ROUNDED
+    ))
+
+    with Progress(
+        SpinnerColumn("dots"),
+        TextColumn(f"[progress.description]Installing {display}...[/progress.description]"),
+        console=console, transient=True
+    ) as progress:
+        progress.add_task("installing", total=None)
+        for cmd in [
+            [sys.executable, '-m', 'pip', 'install', '--user', pip_pkg],
+            ['pip3', 'install', '--user', pip_pkg],
+            ['pip', 'install', '--user', pip_pkg],
+        ]:
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                if result.returncode == 0:
+                    try:
+                        __import__(module_name)
+                        _installed_this_session.add(module_name)
+                        console.print(f"[success]{display} installed successfully![/success]\n")
+                        return True
+                    except ImportError:
+                        continue
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
+
+    _installed_this_session.add(module_name)
+    console.print(f"[red]Could not auto-install {display}.[/red]")
+    console.print(f"[dim]Try manually: pip install {pip_pkg}[/dim]\n")
+    return False
 
 # ── Rich Console (single shared instance) ──────────────────────────
 from rich.console import Console
