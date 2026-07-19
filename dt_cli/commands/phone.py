@@ -1,5 +1,5 @@
 import click, subprocess, os, time, shutil
-from ..config import console, get_save_path, ask_filename, confirm_save, IS_TERMUX, bar_width, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, IS_TERMUX, bar_width, BORDER_ROUNDED, ensure_pip_module
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.table import Table
@@ -43,12 +43,13 @@ def serve_phone():
     ))
 
     try:
-        import qrcode
-        qr = qrcode.QRCode(box_size=1)
-        qr.add_data(url)
-        qr.make(fit=True)
-        console.print(qr.print_ascii(invert=True))
-    except ImportError:
+        if ensure_pip_module('qrcode', display_name='qrcode'):
+            import qrcode
+            qr = qrcode.QRCode(box_size=1)
+            qr.add_data(url)
+            qr.make(fit=True)
+            console.print(qr.print_ascii(invert=True))
+    except Exception:
         pass
 
     console.print(f"\n[dim]Press Ctrl+C to stop the server.[/dim]\n")
