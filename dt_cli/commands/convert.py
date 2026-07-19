@@ -1,4 +1,4 @@
-import click, subprocess, os
+import click, subprocess, os, shlex
 from pathlib import Path
 from ..config import console, get_save_path, ask_filename, confirm_save, ensure_cli_tool, ensure_pip_module, bar_width, BORDER_ROUNDED
 from rich.prompt import Prompt, IntPrompt
@@ -349,7 +349,7 @@ def _images_to_pdf():
                       sorted(Path.cwd().glob("*.[pP][nN][gG]")) + \
                       sorted(Path.cwd().glob("*.[wW][eE][bB][pP]"))
     else:
-        image_files = [Path(f) for f in raw.split()]
+        image_files = [Path(f) for f in shlex.split(raw)]
 
     if not image_files:
         console.print("[red]No images found[/red]")
@@ -425,9 +425,6 @@ def _html_to_pdf():
     input_path = Prompt.ask("[info]Enter HTML file path or URL[/info]")
     filename = ask_filename("converted")
     output = get_save_path('documents') / f"{filename}.pdf"
-
-    # Try using a headless approach
-    ensure_cli_tool('ffmpeg', display_name='ffmpeg')  # ensure tools available
 
     try:
         import subprocess
