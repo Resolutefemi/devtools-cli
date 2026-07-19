@@ -1,6 +1,6 @@
 import click, subprocess, shlex, tempfile, time
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, ensure_cli_tool, bar_width, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_cli_tool, ensure_pip_module, IS_TERMUX, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -23,6 +23,7 @@ def _run_ffmpeg_with_progress(cmd, description="Processing..."):
 
     duration = None
     current_time = None
+    stderr_log = ''
 
     with Progress(
         SpinnerColumn("dots"),
@@ -46,6 +47,7 @@ def _run_ffmpeg_with_progress(cmd, description="Processing..."):
                     duration = None
 
             if 'time=' in line and duration:
+                stderr_log += line
                 try:
                     time_str = line.split('time=')[1].split(' ')[0]
                     h, m, s = time_str.split(':')
@@ -56,6 +58,14 @@ def _run_ffmpeg_with_progress(cmd, description="Processing..."):
                 except Exception:
                     pass
 
+    if process.returncode != 0:
+        # Collect remaining stderr for error reporting
+        remaining = process.stderr.read() if process.stderr else ''
+        _last_lines = (stderr_log + remaining).strip().split('\n')
+        # Show last 3 lines of ffmpeg error
+        for line in _last_lines[-3:]:
+            if line.strip():
+                console.print(f"  [dim]{line.strip()}[/dim]")
     return process.returncode == 0
 
 
@@ -346,6 +356,8 @@ def extract():
 @click.argument('folder', required=False, default=".")
 def compress(folder):
     """Compress images in a folder"""
+    if not ensure_pip_module('PIL', pip_name='Pillow', display_name='Pillow'):
+        return
     from PIL import Image
     target = Path(folder)
 
@@ -733,7 +745,27 @@ def watermark():
     filename = ask_filename(f"watermarked_{Path(video).stem}")
     output = get_save_path('videos') / f"{filename}.mp4"
 
-    filter_str = f"drawtext=text='{text}':fontsize=24:fontcolor=white@0.7:borderw=1:bordercolor=black@0.5:x={positions[pos]}:y={positions[pos]}"
+    # Find a font file (required on Termux/Android, good practice everywhere)
+    font_file = None
+    font_paths = [
+        '/system/fonts/DroidSans.ttf',
+        '/system/fonts/Roboto-Regular.ttf',
+        '/system/fonts/NotoSans-Regular.ttf',
+        '/system/fonts/NotoSansCJK-Regular.ttc',
+    ]
+    for fp in font_paths:
+        if Path(fp).exists():
+            font_file = fp
+            break
+
+    # Build drawtext filter with separate x and y
+    pos_str = positions[pos]
+    pos_x, pos_y = pos_str.split(':', 1)
+
+    if font_file:
+        filter_str = f"drawtext=fontfile={font_file}:text='{text}':fontsize=24:fontcolor=white@0.7:borderw=1:bordercolor=black@0.5:x={pos_x}:y={pos_y}"
+    else:
+        filter_str = f"drawtext=text='{text}':fontsize=24:fontcolor=white@0.7:borderw=1:bordercolor=black@0.5:x={pos_x}:y={pos_y}"
 
     success = _run_ffmpeg_with_progress(
         ['ffmpeg', '-y', '-i', video, '-vf', filter_str,
@@ -792,6 +824,8 @@ def audio_info():
     """Get detailed info about an audio file"""
     if not _require_ffmpeg():
         return
+    if not ensure_cli_tool('ffprobe', display_name='ffprobe'):
+        return
 
     console.print()
     audio = Prompt.ask("[info]Audio file path[/info]")
@@ -840,6 +874,8 @@ def video_info():
     """Get detailed info about a video file"""
     if not _require_ffmpeg():
         return
+    if not ensure_cli_tool('ffprobe', display_name='ffprobe'):
+        return
 
     console.print()
     video = Prompt.ask("[info]Video file path[/info]")
@@ -880,7 +916,8 @@ def video_info():
             table.add_row("Video Codec", video_stream.get('codec_name', 'N/A'))
             fps = video_stream.get('r_frame_rate', '0/1')
             try:
-                fps_val = eval(fps)
+                num, den = fps.split('/')
+                fps_val = float(num) / float(den)
                 table.add_row("FPS", f"{fps_val:.1f}")
             except Exception:
                 table.add_row("FPS", fps)
