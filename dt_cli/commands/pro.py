@@ -69,6 +69,8 @@ def json_fmt(file_path):
 @click.argument('process_name')
 def kill_all(process_name):
     """Kill all processes matching a name"""
+    if not ensure_pip_module('psutil', display_name='psutil'):
+        return
     import psutil
     count = 0
     for proc in psutil.process_iter(['name']):
