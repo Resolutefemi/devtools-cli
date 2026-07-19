@@ -1,5 +1,5 @@
-import click, subprocess, socket, psutil, os, platform, shutil, time
-from ..config import console, BORDER_ROUNDED, IS_TERMUX
+import click, subprocess, socket, os, platform, shutil, time
+from ..config import console, BORDER_ROUNDED, IS_TERMUX, ensure_pip_module
 from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, BarColumn, TextColumn
@@ -26,6 +26,9 @@ def _make_bar(value, max_val=100, width=25):
 @click.command()
 def ports():
     """List all open/listening ports"""
+    if not ensure_pip_module('psutil', display_name='psutil'):
+        return
+    import psutil
     console.print(Panel("[bold brand]OPEN PORTS[/bold brand]", border_style="brand", box=box.ROUNDED))
 
     try:
@@ -57,6 +60,9 @@ def ports():
 @click.command()
 def kill_port():
     """Kill process on a specific port"""
+    if not ensure_pip_module('psutil', display_name='psutil'):
+        return
+    import psutil
     from rich.prompt import IntPrompt
     port = IntPrompt.ask("[info]Port to kill[/info]")
 
@@ -146,6 +152,9 @@ def ip():
 @click.command()
 def battery():
     """Show battery status with animated display"""
+    if not ensure_pip_module('psutil', display_name='psutil'):
+        return
+    import psutil
     if hasattr(psutil, 'sensors_battery'):
         bat = psutil.sensors_battery()
         if bat:
@@ -187,6 +196,9 @@ def battery():
 @click.command()
 def space():
     """Check disk space usage with animated bars"""
+    if not ensure_pip_module('psutil', display_name='psutil'):
+        return
+    import psutil
     console.print()
     console.print(Panel("[bold brand]DISK SPACE[/bold brand]", border_style="brand", box=box.ROUNDED))
 
@@ -237,7 +249,8 @@ def info():
 
     # RAM
     try:
-        ram = psutil.virtual_memory()
+        import psutil as _ps
+        ram = _ps.virtual_memory()
         table.add_row("Total RAM", f"{ram.total / (1024**3):.1f} GB")
         table.add_row("Available RAM", f"{ram.available / (1024**3):.1f} GB")
     except Exception:
@@ -249,7 +262,9 @@ def info():
 @click.command()
 def health():
     """System health with live animated CPU/RAM/Disk monitor"""
-    import random
+    if not ensure_pip_module('psutil', display_name='psutil'):
+        return
+    import psutil, random
 
     console.print()
     console.print(Panel(
@@ -364,6 +379,9 @@ def health():
 @click.command()
 def sysmon():
     """Real-time system monitor (continuous)"""
+    if not ensure_pip_module('psutil', display_name='psutil'):
+        return
+    import psutil
     console.print()
     console.print(Panel(
         "[bold brand]SYSTEM MONITOR[/bold brand]\n[dim]Real-time resource monitoring - Press Ctrl+C to exit[/dim]",
