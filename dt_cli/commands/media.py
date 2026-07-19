@@ -1,6 +1,6 @@
 import click, subprocess, shlex, tempfile, time
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, check_ffmpeg, bar_width, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_cli_tool, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -11,19 +11,8 @@ from rich.text import Text
 
 
 def _require_ffmpeg():
-    """Check ffmpeg and show install instructions if missing."""
-    if not check_ffmpeg():
-        console.print(Panel(
-            "[bold warn]ffmpeg is required for media commands[/bold warn]\n\n"
-            "Install with:\n"
-            "  [accent]sudo apt install ffmpeg[/accent]      (Ubuntu/Debian)\n"
-            "  [accent]brew install ffmpeg[/accent]          (macOS)\n"
-            "  [accent]choco install ffmpeg[/accent]         (Windows)\n"
-            "  [accent]pkg install ffmpeg[/accent]           (Termux)",
-            border_style="warn", box=box.ROUNDED
-        ))
-        return False
-    return True
+    """Ensure ffmpeg is available, auto-installing if missing."""
+    return ensure_cli_tool('ffmpeg', display_name='ffmpeg')
 
 
 def _run_ffmpeg_with_progress(cmd, description="Processing..."):
