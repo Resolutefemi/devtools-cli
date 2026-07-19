@@ -1,6 +1,6 @@
 import click, subprocess, re
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, check_yt_dlp, bar_width, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_cli_tool, ensure_pip_module, bar_width, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, DownloadColumn
 from rich.table import Table
@@ -125,20 +125,10 @@ def _ask_video_quality(url, filename):
 
 
 def _get_yt_dlp_cmd():
-    """Get the yt-dlp command, checking if installed."""
-    if not check_yt_dlp():
-        console.print()
-        console.print(Panel(
-            "[bold warn]yt-dlp is not installed[/bold warn]\n\n"
-            "dt download media requires yt-dlp. Install it with:\n\n"
-            "[accent]  pip install yt-dlp[/accent]\n"
-            "[accent]  brew install yt-dlp[/accent]  (macOS)\n"
-            "[accent]  pkg install yt-dlp[/accent]    (Termux)\n"
-            "[accent]  scoop install yt-dlp[/accent]   (Windows)",
-            border_style="warn", box=box.ROUNDED
-        ))
-        return None
-    return "yt-dlp"
+    """Get the yt-dlp command, auto-installing if missing."""
+    if ensure_cli_tool('yt-dlp', display_name='yt-dlp'):
+        return 'yt-dlp'
+    return None
 
 
 def _download_audio(url, filename, fmt="mp3"):
@@ -293,6 +283,9 @@ def _download_images_ytdlp(url, filename):
 
 def _direct_image_download(url, filename, output_dir):
     """Direct image download fallback."""
+    if not ensure_pip_module('requests', display_name='requests'):
+        console.print("[red]requests is required for direct download. Install: pip install requests[/red]")
+        return
     import requests
 
     ext_match = re.search(r'\.(jpg|jpeg|png|webp|gif|svg|bmp|ico)(\?.*)?$', url.lower())
