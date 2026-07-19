@@ -1,6 +1,6 @@
 import click, subprocess, os
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, check_ffmpeg, bar_width, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_cli_tool, ensure_pip_module, bar_width, BORDER_ROUNDED
 from rich.prompt import Prompt, IntPrompt
 from rich.table import Table
 from rich.panel import Panel
@@ -122,8 +122,7 @@ def convert():
 
 def _convert_audio():
     """Audio conversion flow."""
-    if not check_ffmpeg():
-        console.print("[red]ffmpeg is required for audio conversion. Install it first.[/red]")
+    if not ensure_cli_tool('ffmpeg', display_name='ffmpeg'):
         return
 
     input_path = Prompt.ask("[info]Enter audio file path[/info]")
@@ -150,8 +149,7 @@ def _convert_audio():
 
 def _convert_video():
     """Video conversion flow."""
-    if not check_ffmpeg():
-        console.print("[red]ffmpeg is required for video conversion. Install it first.[/red]")
+    if not ensure_cli_tool('ffmpeg', display_name='ffmpeg'):
         return
 
     input_path = Prompt.ask("[info]Enter video file path[/info]")
@@ -178,6 +176,9 @@ def _convert_video():
 
 def _convert_image():
     """Image conversion using Pillow."""
+    if not ensure_pip_module('PIL', pip_name='Pillow', display_name='Pillow'):
+        return
+
     input_path = Prompt.ask("[info]Enter image file path[/info]")
     p = Path(input_path)
     if not p.exists():
@@ -198,7 +199,6 @@ def _convert_image():
         with Progress(SpinnerColumn("dots"), TextColumn("[progress.description]{task.description}"), console=console, transient=True) as progress:
             progress.add_task("[info]Converting image...[/info]", total=None)
             img = Image.open(p)
-            # Handle RGBA to RGB conversion for JPEG
             if pil_fmt == "JPEG" and img.mode in ('RGBA', 'LA', 'P'):
                 img = img.convert('RGB')
             if pil_fmt == "ICO":
@@ -338,6 +338,9 @@ def _pdf_to_images():
 
 def _images_to_pdf():
     """Convert images to PDF."""
+    if not ensure_pip_module('PIL', pip_name='Pillow', display_name='Pillow'):
+        return
+
     console.print("[info]Enter image file paths (space-separated, or 'all' for all images in CWD)[/info]")
     raw = Prompt.ask("[info]Images[/info]")
 
@@ -424,9 +427,7 @@ def _html_to_pdf():
     output = get_save_path('documents') / f"{filename}.pdf"
 
     # Try using a headless approach
-    if check_ffmpeg():
-        # We can use wkhtmltopdf or similar
-        pass
+    ensure_cli_tool('ffmpeg', display_name='ffmpeg')  # ensure tools available
 
     try:
         import subprocess
