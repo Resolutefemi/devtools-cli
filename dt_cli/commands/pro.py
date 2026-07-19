@@ -1,6 +1,6 @@
 import click, os, subprocess, json, re
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
@@ -122,6 +122,8 @@ def search(pattern, path):
 @click.argument('url')
 def links(url):
     """Extract all links from a website"""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return
     import requests
     console.print(f"[info]Extracting links from {url}...[/info]")
     try:

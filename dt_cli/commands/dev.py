@@ -1,7 +1,7 @@
 import click, os
 from datetime import datetime
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module, BORDER_ROUNDED
 from rich.panel import Panel
 from rich import box
 
@@ -10,6 +10,8 @@ from rich import box
 @click.argument('lang', type=click.Choice(['node', 'python', 'go', 'rust', 'flutter', 'java', 'c', 'cpp', 'swift', 'kotlin', 'dart', 'ruby', 'php']))
 def ignore(lang):
     """Generate .gitignore for a language/framework"""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return
     import requests
     console.print(f"[info]Fetching .gitignore for [bold]{lang}[/bold]...[/info]")
     try:
