@@ -1,6 +1,6 @@
 import click, datetime, urllib.request, json, time, sys
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module, BORDER_ROUNDED
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.table import Table
@@ -32,6 +32,8 @@ def up(file_path):
 @click.command()
 def qr():
     """Generate QR code in terminal"""
+    if not ensure_pip_module('qrcode', display_name='qrcode'):
+        return
     import qrcode
     data = Prompt.ask("[info]Data to encode[/info]")
 
@@ -214,6 +216,8 @@ def pomo(minutes):
 @click.argument('url')
 def shorten(url):
     """Shorten a URL using TinyURL"""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return
     import requests
     console.print("[info]Shortening URL...[/info]")
     try:
@@ -235,6 +239,8 @@ def shorten(url):
 @click.argument('url')
 def status(url):
     """Check if a website is up or down"""
+    if not ensure_pip_module('requests', display_name='requests'):
+        return
     import requests
     if not url.startswith('http'):
         url = 'https://' + url
