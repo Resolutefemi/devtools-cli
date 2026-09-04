@@ -1,4 +1,4 @@
-# Renance DevTools (renance-dt) v3.1
+# Renance DevTools (renance-dt) v3.2
 
 <div align="center">
   <h3><a href="https://devtools.pxxl.click">Official Website & Interactive Tutorial</a></h3>
@@ -9,6 +9,16 @@
   [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Termux-lightgrey)](https://pypi.org/project/renance-dt/)
   [![Built By](https://img.shields.io/badge/Built%20By-Resolutefemi-blue.svg)](mailto:hello@renance.dev)
 </div>
+
+---
+
+## What's New in v3.2
+
+- **Fixed `dt dm`** - Social media downloads work again: live progress bar (speed/ETA), real error messages instead of silent failures, and auto-repair (updates stale yt-dlp, installs impersonation support, retries intelligently)
+- **Login-gated platforms** - `dt dm <url> --cookies-from-browser chrome` (plus an automatic prompt) for Instagram/Facebook downloads
+- **New `dt dm` flags** - `--type video|audio|image`, `--quality 2160|1080|720|480|360|best`, `--filename`, and `--update` to refresh yt-dlp before downloading
+- **No more hard ffmpeg failures** - HD merging and MP3 extraction still use ffmpeg when available; without it, downloads degrade gracefully instead of erroring
+- **Smarter yt-dlp detection** - works even when yt-dlp is installed but not on PATH
 
 ---
 
