@@ -78,6 +78,9 @@ Run `dt help` to see the full interactive dashboard.
 - `dt audio-info` / `dt video-info` - Media file details
 - `dt convert` - Universal file converter (Audio/Video/Image/SVG/Documents)
 - `dt dm` - Download from any social media platform
+  - `dt dm <url> --cookies-from-browser chrome` - Download from Instagram/Facebook (login cookies)
+  - `dt dm <url> --type audio --quality best` - Skip the prompts
+  - `dt dm <url> --update` - Update yt-dlp first (fixes most "stopped working" issues)
 
 ### Network (`dt speed`, `dt ping`, `dt myip`)
 - `dt speed` - Live speed test with animated display (no external tools needed)
