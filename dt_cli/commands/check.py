@@ -1,6 +1,6 @@
 import click, subprocess, shutil
 from pathlib import Path
-from ..config import console, BORDER_ROUNDED
+from ..config import console
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
