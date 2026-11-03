@@ -1,7 +1,6 @@
 import click, subprocess, os
-from pathlib import Path
 from ..config import console
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt
 from rich.panel import Panel
 from rich import box
 
