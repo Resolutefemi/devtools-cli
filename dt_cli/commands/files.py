@@ -1,10 +1,8 @@
-import click, shutil, os, datetime, hashlib, concurrent.futures
+import click, shutil, datetime, hashlib, subprocess, concurrent.futures
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, IGNORE_DIRS, bar_width, BORDER_ROUNDED
-from rich.panel import Panel
+from ..config import console, get_save_path, ask_filename, confirm_save, IGNORE_DIRS, bar_width
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
-from rich.prompt import Prompt
 from rich import box
 
 
@@ -17,7 +15,7 @@ def send():
 
     zip_path = get_save_path('desktop') / f"{name}.zip"
 
-    console.print(f"[info]Creating zip archive...[/info]")
+    console.print("[info]Creating zip archive...[/info]")
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
@@ -207,7 +205,6 @@ def duplicate():
 def tree():
     """Show folder tree"""
     from rich.tree import Tree
-    from rich import Tree as RichTree
 
     tree_obj = Tree(f"[bold]{Path.cwd().name}[/bold]")
     _build_tree(tree_obj, Path.cwd(), 0)
@@ -241,7 +238,7 @@ def backup():
     name = f"{Path.cwd().name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
     dest = get_save_path('documents') / f"{name}.zip"
 
-    console.print(f"[info]Creating backup...[/info]")
+    console.print("[info]Creating backup...[/info]")
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
@@ -269,7 +266,7 @@ def fcp(src, dest):
         console.print(f"[red]Source does not exist: {src}[/red]")
         return
 
-    console.print(f"[info]Starting high-speed copy...[/info]")
+    console.print("[info]Starting high-speed copy...[/info]")
 
     if src_path.is_file():
         dest_path.parent.mkdir(parents=True, exist_ok=True)
