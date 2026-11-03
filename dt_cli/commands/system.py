@@ -1,8 +1,7 @@
-import click, subprocess, socket, os, platform, shutil, time
-from ..config import console, BORDER_ROUNDED, IS_TERMUX, ensure_pip_module
+import click, subprocess, socket, os, platform, time
+from ..config import console, IS_TERMUX, ensure_pip_module
 from rich.panel import Panel
 from rich.table import Table
-from rich.progress import Progress, BarColumn, TextColumn
 from rich.live import Live
 from rich.layout import Layout
 from rich.text import Text
@@ -93,7 +92,7 @@ def wifi():
     if os.name == 'nt':
         console.print("[info]Fetching WiFi profiles...[/info]")
         try:
-            data = subprocess.check_output(['netsh', 'wlan', 'show', 'profiles'], shell=True).decode('utf-8', errors='ignore')
+            data = subprocess.check_output(['netsh', 'wlan', 'show', 'profiles']).decode('utf-8', errors='ignore')
             profiles = re.findall(r"All User Profile\s*:\s*(.*)", data)
             if not profiles:
                 profiles = [line.split(":")[1].strip() for line in data.split('\n') if ":" in line and "Profile" in line]
@@ -105,8 +104,8 @@ def wifi():
             for name in profiles:
                 name = name.strip('\r').strip()
                 try:
-                    res = subprocess.check_output(f'netsh wlan show profile name="{name}" key=clear', shell=True).decode('utf-8', errors='ignore')
-                    password_match = re.search(r"(?:Key Content|Contenu de la cl|Contenido de la clave|Schlsselinhalt)\s*:\s*(.*)", res)
+                    res = subprocess.check_output(['netsh', 'wlan', 'show', 'profile', f'name={name}', 'key=clear']).decode('utf-8', errors='ignore')
+                    password_match = re.search(r"(?:Key Content|Contenu de la cl\u00e9|Contenido de la clave|Schl\u00fcsselinhalt)\s*:\s*(.*)", res)
                     if password_match:
                         password = password_match.group(1).strip('\r').strip()
                         table.add_row(name, password)
@@ -264,7 +263,7 @@ def health():
     """System health with live animated CPU/RAM/Disk monitor"""
     if not ensure_pip_module('psutil', display_name='psutil'):
         return
-    import psutil, random
+    import psutil
 
     console.print()
     console.print(Panel(
@@ -333,7 +332,7 @@ def health():
                 # RAM
                 ram_pct = ram.percent
                 ram_style = "success" if ram_pct < 70 else ("warn" if ram_pct < 90 else "red")
-                body.append(f"\n\n  RAM Usage\n", style="bold")
+                body.append("\n\n  RAM Usage\n", style="bold")
                 body.append(f"  {_make_bar(ram_pct)}  ")
                 body.append(f"[{ram_style}]{ram_pct:.1f}%[/{ram_style}]  ")
                 body.append(f"[dim]{ram.used // (1024**3)}/{ram.total // (1024**3)} GB[/dim]\n")
@@ -342,7 +341,7 @@ def health():
                 # Disk
                 disk_pct = disk.percent
                 disk_style = "success" if disk_pct < 70 else ("warn" if disk_pct < 90 else "red")
-                body.append(f"\n\n  Disk Usage\n", style="bold")
+                body.append("\n\n  Disk Usage\n", style="bold")
                 body.append(f"  {_make_bar(disk_pct)}  ")
                 body.append(f"[{disk_style}]{disk_pct:.0f}%[/{disk_style}]  ")
                 body.append(f"[dim]{disk.free // (1024**3)} GB free[/dim]")
@@ -453,7 +452,7 @@ def sysmon():
                 text.append(f"\n  NET  [dim]↑{net_sent:.0f} KB/s  ↓{net_recv:.0f} KB/s[/dim]")
 
                 if top_procs:
-                    text.append(f"\n\n  [bold]Top Processes:[/bold]")
+                    text.append("\n\n  [bold]Top Processes:[/bold]")
                     for p in top_procs:
                         name = (p.get('name') or '?')[:15]
                         cpu_v = p.get('cpu_percent') or 0
