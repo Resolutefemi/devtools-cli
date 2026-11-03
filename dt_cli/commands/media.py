@@ -69,10 +69,22 @@ def _prepare_output(category, filename, extension):
         if not name:
             name = "output"
 
-        extension = extension if extension.startswith(".") else f".{extension}"
+        # Empty extension is valid for directory names.
+        if extension:
+            extension = (
+                extension
+                if extension.startswith(".")
+                else f".{extension}"
+            )
+        else:
+            extension = ""
+
         return directory / f"{name}{extension}"
+
     except (OSError, TypeError, ValueError) as exc:
-        console.print(f"[red]Could not prepare output directory: {exc}[/red]")
+        console.print(
+            f"[red]Could not prepare output directory: {exc}[/red]"
+        )
         return None
 
 
@@ -139,10 +151,13 @@ def _validate_time_range(start, end):
         end_seconds = _parse_time(end)
 
         if end_seconds <= start_seconds:
-            console.print("[red]End time must be greater than start time.[/red]")
+            console.print(
+                "[red]End time must be greater than start time.[/red]"
+            )
             return False
 
         return True
+
     except ValueError as exc:
         console.print(f"[red]Invalid time: {exc}[/red]")
         return False
@@ -172,8 +187,10 @@ def _create_concat_list(files):
     try:
         for item in files:
             temp.write(_concat_quote(item))
+
         temp.close()
         return list_path
+
     except Exception:
         temp.close()
         _remove_partial(list_path)
@@ -181,7 +198,7 @@ def _create_concat_list(files):
 
 
 def _build_atempo_filter(speed):
-    """Build an FFmpeg atempo chain for any supported speed."""
+    """Build an FFmpeg atempo chain for supported speeds."""
     filters = []
 
     while speed > 2.0:
@@ -199,6 +216,7 @@ def _build_atempo_filter(speed):
 def _escape_drawtext(value):
     """Escape user text for FFmpeg drawtext filter."""
     value = str(value)
+
     replacements = {
         "\\": "\\\\",
         "'": "\\'",
@@ -273,15 +291,20 @@ def _run_ffmpeg_with_progress(cmd, description="Processing..."):
                     if duration and duration > 0 and "time=" in line:
                         try:
                             time_text = (
-                                line.split("time=", 1)[1]
-                                .split()[0]
+                                line.split("time=", 1)[1].split()[0]
                             )
                             current_time = _parse_time(time_text)
+
                             percentage = min(
                                 100,
                                 max(0, current_time / duration * 100),
                             )
-                            progress.update(task, completed=percentage)
+
+                            progress.update(
+                                task,
+                                completed=percentage,
+                            )
+
                         except (ValueError, IndexError):
                             pass
 
@@ -289,9 +312,11 @@ def _run_ffmpeg_with_progress(cmd, description="Processing..."):
 
         if return_code != 0:
             console.print("[red]FFmpeg reported an error:[/red]")
+
             for line in stderr_log[-5:]:
                 if line.strip():
                     console.print(f"  [dim]{line}[/dim]")
+
             return False
 
         return True
@@ -301,6 +326,7 @@ def _run_ffmpeg_with_progress(cmd, description="Processing..."):
 
         if process is not None and process.poll() is None:
             process.terminate()
+
             try:
                 process.wait(timeout=3)
             except subprocess.TimeoutExpired:
@@ -342,13 +368,14 @@ def _show_saved_file(path, label="File"):
         console.print(f"[dim]Size: {size:.2f} MB[/dim]")
         confirm_save(path)
         return True
+
     except OSError as exc:
         console.print(f"[red]Could not access output file: {exc}[/red]")
         return False
 
 
 def _get_multiple_files(prompt_text):
-    """Read a space-separated list of file paths, supporting quoted paths."""
+    """Read multiple file paths, supporting quoted paths."""
     raw_input = Prompt.ask(prompt_text).strip()
 
     if not raw_input:
@@ -369,8 +396,10 @@ def _get_multiple_files(prompt_text):
 
     for item in files:
         path = _valid_file(item)
+
         if path is None:
             return None
+
         resolved.append(path)
 
     return resolved
@@ -387,7 +416,9 @@ def _ask_speed():
         value = float(speed)
 
         if not math.isfinite(value) or value <= 0 or value > 4:
-            console.print("[red]Speed must be between 0.01 and 4.0.[/red]")
+            console.print(
+                "[red]Speed must be between 0.01 and 4.0.[/red]"
+            )
             return None
 
         return value
@@ -611,7 +642,8 @@ def shrink():
         [
             "ffmpeg", "-y",
             "-i", str(video),
-            "-vf", f"scale={scales[quality]}:force_original_aspect_ratio=decrease",
+            "-vf",
+            f"scale={scales[quality]}:force_original_aspect_ratio=decrease",
             "-c:v", "libx264",
             "-crf", crfs[quality],
             "-preset", "fast",
@@ -630,6 +662,7 @@ def shrink():
     try:
         orig_size = video.stat().st_size / (1024 * 1024)
         new_size = output.stat().st_size / (1024 * 1024)
+
         reduction = (
             (1 - new_size / orig_size) * 100
             if orig_size > 0 else 0
@@ -647,7 +680,10 @@ def shrink():
 
         table.add_row("Original", f"{orig_size:.1f} MB")
         table.add_row("Compressed", f"{new_size:.1f} MB")
-        table.add_row("Reduction", f"[success]{reduction:.0f}%[/success]")
+        table.add_row(
+            "Reduction",
+            f"[success]{reduction:.0f}%[/success]",
+        )
 
         console.print(table)
         confirm_save(output)
@@ -703,6 +739,9 @@ def clip():
     if output is None:
         return
 
+    # Calculate exact clip duration from start and end.
+    duration = _parse_time(end) - _parse_time(start)
+
     console.print(f"\n[info]Cutting from {start} to {end}...[/info]")
 
     success = _run_ffmpeg_with_progress(
@@ -710,7 +749,7 @@ def clip():
             "ffmpeg", "-y",
             "-ss", start,
             "-i", str(video),
-            "-to", end,
+            "-t", str(duration),
             "-c", "copy",
             str(output),
         ],
@@ -753,8 +792,15 @@ def gif():
     if video is None:
         return
 
-    width_text = Prompt.ask("[info]Width in pixels[/info]", default="480")
-    fps_text = Prompt.ask("[info]Frames per second[/info]", default="12")
+    width_text = Prompt.ask(
+        "[info]Width in pixels[/info]",
+        default="480",
+    )
+
+    fps_text = Prompt.ask(
+        "[info]Frames per second[/info]",
+        default="12",
+    )
 
     try:
         width = int(width_text)
@@ -790,8 +836,6 @@ def gif():
             f"scale={width}:-1:flags=lanczos,"
             "palettegen"
         )
-
-        console.print("\n[info]Generating GIF palette...[/info]")
 
         palette_success = _run_ffmpeg_with_progress(
             [
@@ -868,6 +912,8 @@ def extract():
         return
 
     filename = ask_filename(f"{video.stem}_frames")
+
+    # Empty extension creates a folder name without a trailing dot.
     output_dir = _prepare_output("images", filename, "")
 
     if output_dir is None:
@@ -876,7 +922,9 @@ def extract():
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        console.print(f"[red]Could not create output folder: {exc}[/red]")
+        console.print(
+            f"[red]Could not create output folder: {exc}[/red]"
+        )
         return
 
     success = _run_ffmpeg_with_progress(
@@ -891,7 +939,10 @@ def extract():
     frames = list(output_dir.glob("frame_*.png"))
 
     if success and frames:
-        console.print(f"[success]Extracted {len(frames)} frames[/success]")
+        console.print(
+            f"[success]Extracted {len(frames)} frames[/success]"
+        )
+
         console.print(
             Panel(
                 f"[dim]{output_dir}[/dim]",
@@ -1007,12 +1058,13 @@ def compress(folder):
 
             try:
                 original_size = img_path.stat().st_size
-                image_format = Image.open(img_path).format
-
-                if not image_format:
-                    raise ValueError("Unknown image format.")
 
                 with Image.open(img_path) as source:
+                    image_format = source.format
+
+                    if not image_format:
+                        raise ValueError("Unknown image format.")
+
                     source.load()
                     image = ImageOps.exif_transpose(source)
 
@@ -1035,17 +1087,17 @@ def compress(folder):
                             "quality": 85,
                             "optimize": True,
                         }
+
                     elif image_format.upper() == "PNG":
                         save_options = {
                             "optimize": True,
                         }
+
                     elif image_format.upper() == "WEBP":
                         save_options = {
                             "quality": 85,
                             "method": 4,
                         }
-                    elif image_format.upper() == "BMP":
-                        save_options = {}
 
                     image.save(
                         str(temp_path),
@@ -1132,12 +1184,14 @@ def trim_audio():
     if output is None:
         return
 
+    duration = _parse_time(end) - _parse_time(start)
+
     success = _run_ffmpeg_with_progress(
         [
             "ffmpeg", "-y",
             "-ss", start,
             "-i", str(audio),
-            "-to", end,
+            "-t", str(duration),
             "-c", "copy",
             str(output),
         ],
@@ -1774,8 +1828,12 @@ def audio_info():
 
         if result.returncode != 0:
             console.print("[red]FFprobe could not read this file.[/red]")
+
             if result.stderr:
-                console.print(f"[dim]{result.stderr.strip()[-500:]}[/dim]")
+                console.print(
+                    f"[dim]{result.stderr.strip()[-500:]}[/dim]"
+                )
+
             return
 
         import json
@@ -1789,7 +1847,9 @@ def audio_info():
                 break
 
         if audio_stream is None:
-            console.print("[yellow]No audio stream found in this file.[/yellow]")
+            console.print(
+                "[yellow]No audio stream found in this file.[/yellow]"
+            )
             return
 
         table = Table(
@@ -1885,8 +1945,12 @@ def video_info():
 
         if result.returncode != 0:
             console.print("[red]FFprobe could not read this file.[/red]")
+
             if result.stderr:
-                console.print(f"[dim]{result.stderr.strip()[-500:]}[/dim]")
+                console.print(
+                    f"[dim]{result.stderr.strip()[-500:]}[/dim]"
+                )
+
             return
 
         import json
@@ -1896,14 +1960,22 @@ def video_info():
         audio_stream = None
 
         for stream in data.get("streams", []):
-            if stream.get("codec_type") == "video" and video_stream is None:
+            if (
+                stream.get("codec_type") == "video"
+                and video_stream is None
+            ):
                 video_stream = stream
 
-            elif stream.get("codec_type") == "audio" and audio_stream is None:
+            elif (
+                stream.get("codec_type") == "audio"
+                and audio_stream is None
+            ):
                 audio_stream = stream
 
         if video_stream is None:
-            console.print("[yellow]No video stream found in this file.[/yellow]")
+            console.print(
+                "[yellow]No video stream found in this file.[/yellow]"
+            )
             return
 
         table = Table(
@@ -1941,9 +2013,9 @@ def video_info():
             video_stream.get("codec_name", "N/A"),
         )
 
-        fps = video_stream.get("avg_frame_rate") or video_stream.get(
-            "r_frame_rate",
-            "0/1",
+        fps = (
+            video_stream.get("avg_frame_rate")
+            or video_stream.get("r_frame_rate", "0/1")
         )
 
         try:
@@ -1955,6 +2027,7 @@ def video_info():
 
             fps_value = float(numerator) / denominator
             table.add_row("FPS", f"{fps_value:.2f}")
+
         except (ValueError, TypeError, ZeroDivisionError):
             table.add_row("FPS", str(fps))
 
@@ -1969,6 +2042,7 @@ def video_info():
                 table.add_row("Sample Rate", f"{sample_rate} Hz")
             except (TypeError, ValueError):
                 table.add_row("Sample Rate", "N/A")
+
         else:
             table.add_row("Audio", "No audio stream")
 
