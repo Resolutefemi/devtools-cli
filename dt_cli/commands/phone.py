@@ -1,5 +1,6 @@
-import click, subprocess, os, time, shutil
-from ..config import console, get_save_path, ask_filename, confirm_save, IS_TERMUX, bar_width, BORDER_ROUNDED, ensure_pip_module
+import click, subprocess, os, shutil
+from pathlib import Path
+from ..config import console, get_save_path, ask_filename, confirm_save, IS_TERMUX, bar_width, ensure_pip_module
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.table import Table
@@ -52,7 +53,7 @@ def serve_phone():
     except Exception:
         pass
 
-    console.print(f"\n[dim]Press Ctrl+C to stop the server.[/dim]\n")
+    console.print("\n[dim]Press Ctrl+C to stop the server.[/dim]\n")
 
     try:
         subprocess.run(['python', '-m', 'http.server', str(port)])
@@ -196,7 +197,7 @@ def record_audio():
     filename = ask_filename("recording")
     output = get_save_path('music') / f"{filename}.aac"
 
-    console.print(f"[info]Recording audio... Press Ctrl+C to stop.[/info]")
+    console.print("[info]Recording audio... Press Ctrl+C to stop.[/info]")
     console.print(f"[dim]Saving to: {output}[/dim]\n")
 
     try:
@@ -216,7 +217,7 @@ def record_audio():
 
     if output.exists():
         size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Duration: ~recording time[/dim]")
+        console.print("[dim]Duration: ~recording time[/dim]")
         console.print(f"[dim]Size: {size:.2f} MB[/dim]")
         confirm_save(output)
     else:
