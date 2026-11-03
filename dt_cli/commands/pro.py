@@ -1,6 +1,6 @@
-import click, os, subprocess, json, re
+import click, json, re
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
