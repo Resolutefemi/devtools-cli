@@ -7,10 +7,9 @@ except ImportError:
         print("Install with:  pip install renance-dt")
         sys.exit(1)
 
-from .config import console, DT_THEME, IS_TERMUX, is_narrow, help_columns
+from .config import console, IS_TERMUX, is_narrow, help_columns
 from rich.panel import Panel
 from rich.table import Table
-from rich.columns import Columns
 from rich.text import Text
 from rich import box
 
