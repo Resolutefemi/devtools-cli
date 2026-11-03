@@ -1,4 +1,4 @@
-import click, random, math, uuid, base64, urllib.parse, os, subprocess, datetime, hashlib, time, platform
+import click, random, secrets, math, uuid, base64, urllib.parse, os, datetime, hashlib, time
 from pathlib import Path
 from ..config import console, ensure_pip_module
 
@@ -193,100 +193,5 @@ register('mac_addr', 'Random MAC address', lambda a: ':'.join(f"{random.randint(
 register('ipv4_gen', 'Random IPv4', lambda a: '.'.join(str(random.randint(0, 255)) for _ in range(4)))
 register('port_gen', 'Random Port', lambda a: random.randint(1024, 65535))
 register('user_agent', 'Random User Agent', lambda a: random.choice(['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)']))
-register('password', 'Simple password', lambda a: ''.join(random.choice('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*') for _ in range(int(a[0]) if a else 12)))
-register('pin', 'Random PIN', lambda a: ''.join(str(random.randint(0, 9)) for _ in range(int(a[0]) if a else 4)))
-register('clear2', 'Clear screen', lambda a: (os.system('cls' if os.name == 'nt' else 'clear'), "Cleared")[1])
-
-# FILE UTILS
-register('size', 'File size', lambda a: f"{os.path.getsize(a[0]) / 1024:.2f} KB")
-register('ext', 'File extension', lambda a: os.path.splitext(a[0])[1])
-register('basename', 'File basename', lambda a: os.path.basename(a[0]))
-register('dirname', 'File dirname', lambda a: os.path.dirname(a[0]))
-register('exists', 'File exists?', lambda a: str(os.path.exists(a[0])))
-register('isdir', 'Is directory?', lambda a: str(os.path.isdir(a[0])))
-register('isfile', 'Is file?', lambda a: str(os.path.isfile(a[0])))
-register('md5_file', 'MD5 of file', lambda a: hashlib.md5(Path(a[0]).read_bytes()).hexdigest())
-register('sha1_file', 'SHA1 of file', lambda a: hashlib.sha1(Path(a[0]).read_bytes()).hexdigest())
-register('sha256_file', 'SHA256 of file', lambda a: hashlib.sha256(Path(a[0]).read_bytes()).hexdigest())
-register('count_files', 'File count in dir', lambda a: len([f for f in os.listdir(a[0] if a else '.') if os.path.isfile(os.path.join(a[0] if a else '.', f))]))
-register('count_dirs', 'Dir count in dir', lambda a: len([f for f in os.listdir(a[0] if a else '.') if os.path.isdir(os.path.join(a[0] if a else '.', f))]))
-
-# FINANCE
-register('mortgage', 'Mortgage Calc (P, r%, n)', lambda a: f"Monthly: {(float(a[0])*(float(a[1])/100/12)*(1+float(a[1])/100/12)**float(a[2]))/((1+float(a[1])/100/12)**float(a[2])-1):.2f}")
-register('tip', 'Tip Calc (Total, %)', lambda a: f"Tip: {float(a[0])*(float(a[1])/100):.2f}")
-register('tax', 'Tax Calc (Subtotal, %)', lambda a: f"Total: {float(a[0])*(1+float(a[1])/100):.2f}")
-
-# DEV UTILS
-register('lorem', 'Lorem Ipsum (words)', lambda a: ' '.join(['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipiscing', 'elit'] * int(a[0] if a else 5))[:int(a[0] if a else 50)])
-register('hex_color', 'Random hex color', lambda a: f"#{random.randint(0, 0xFFFFFF):06x}")
-register('rgb_color', 'Random RGB color', lambda a: f"rgb({random.randint(0,255)}, {random.randint(0,255)}, {random.randint(0,255)})")
-register('json_mock', 'Dummy JSON data', lambda a: '{"id": 1, "name": "Test", "status": "active"}')
-register('base64_img', 'Base64 placeholder image', lambda a: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==")
-
-# PORT CHECK (cross-platform)
-def _port_check(args):
-    host = args[0] if args else 'localhost'
-    port = int(args[1]) if len(args) > 1 else 80
-    import socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(2)
-    result = s.connect_ex((host, port))
-    s.close()
-    return "Open" if result == 0 else "Closed"
-register('port_check', 'Check if port is open (host port)', _port_check)
-
-# CONVERSION
-register('bin2dec', 'Binary to Decimal', lambda a: int(a[0], 2))
-register('dec2bin', 'Decimal to Binary', lambda a: bin(int(a[0])))
-register('hex2dec', 'Hex to Decimal', lambda a: int(a[0], 16))
-register('dec2hex', 'Decimal to Hex', lambda a: hex(int(a[0])))
-register('oct2dec', 'Octal to Decimal', lambda a: int(a[0], 8))
-register('dec2oct', 'Decimal to Octal', lambda a: oct(int(a[0])))
-register('kg2lb', 'KG to Lbs', lambda a: float(a[0]) * 2.20462)
-register('lb2kg', 'Lbs to KG', lambda a: float(a[0]) / 2.20462)
-register('m2ft', 'Meters to Feet', lambda a: float(a[0]) * 3.28084)
-register('ft2m', 'Feet to Meters', lambda a: float(a[0]) / 3.28084)
-
-# TIME & DATE
-register('tz', 'Current Timezone', lambda a: time.tzname[0])
-register('timestamp', 'Current Unix timestamp', lambda a: int(time.time()))
-register('days_until', 'Days until YYYY-MM-DD', lambda a: (datetime.datetime.strptime(a[0], '%Y-%m-%d') - datetime.datetime.now()).days)
-register('week_num', 'Current ISO week number', lambda a: datetime.datetime.now().isocalendar()[1])
-
-# ADVANCED SYSTEM
-register('cpu_count', 'CPU core count', lambda a: os.cpu_count())
-register('env_var', 'Get env variable', lambda a: os.environ.get(a[0], "Not Found"))
-
-# PATH LIST
-def _path_list(args):
-    sep = ';' if os.name == 'nt' else ':'
-    return '\n'.join(os.environ.get('PATH', '').split(sep))
-register('path_list', 'System PATH entries', _path_list)
-
-# SYSTEM STATS (lazy-load psutil)
-def _mem_total(a):
-    if not ensure_pip_module('psutil', display_name='psutil'): return None
-    import psutil
-    return f"{psutil.virtual_memory().total / (1024**3):.2f} GB"
-def _mem_avail(a):
-    if not ensure_pip_module('psutil', display_name='psutil'): return None
-    import psutil
-    return f"{psutil.virtual_memory().available / (1024**3):.2f} GB"
-def _disk_io(a):
-    if not ensure_pip_module('psutil', display_name='psutil'): return None
-    import psutil
-    return str(psutil.disk_io_counters())
-def _net_io(a):
-    if not ensure_pip_module('psutil', display_name='psutil'): return None
-    import psutil
-    return str(psutil.net_io_counters())
-def _uptime(a):
-    if not ensure_pip_module('psutil', display_name='psutil'): return None
-    import psutil
-    return f"{(time.time() - psutil.boot_time()) / 3600:.2f} hours"
-
-register('mem_total', 'Total RAM', _mem_total)
-register('mem_avail', 'Available RAM', _mem_avail)
-register('disk_io', 'Disk IO stats', _disk_io)
-register('net_io', 'Network IO stats', _net_io)
-register('uptime', 'System uptime', _uptime)
+register('password', 'Simple password', lambda a: ''.join(secrets.choice('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*') for _ in range(int(a[0]) if a else 12)))
+register('pin', 'Random PIN', l
