@@ -1,15 +1,15 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "renance-dt"
-version = "3.2.0"
+version = "3.3.1"
 description = "Renance DevTools - One command to rule them all"
 authors = [{name = "Renance", email = "hello@renance.dev"}]
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
+license = "MIT"
 dependencies = [
     "click>=8.1.0",
     "rich>=13.0.0",
@@ -20,6 +20,13 @@ dependencies = [
     "pyjokes>=0.6.0",
     "cryptography>=41.0.0"
 ]
+
+[project.urls]
+Homepage = "https://github.com/Resolutefemi/devtools-cli"
+Repository = "https://github.com/Resolutefemi/devtools-cli"
+
+[tool.setuptools.packages.find]
+include = ["dt_cli*"]
 
 [project.scripts]
 dt = "dt_cli.cli:cli"

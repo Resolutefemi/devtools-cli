@@ -4,7 +4,6 @@ import re
 import shutil
 import sys
 import glob as glob_mod
-import os
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
@@ -1426,6 +1425,106 @@ def dm(url, media_type, quality, filename_opt, cookies, update):
         )
 
 
+def _download_images(url, filename, cookies=None):
+    """Download images from URL (gallery-dl, then yt-dlp, then direct)."""
+    if shutil.which("gallery-dl") is not None:
+        output_dir = _ensure_output_dir(get_save_path('images'))
+        if output_dir is None:
+            return
+        console.print(f"\n[info]Downloading images from:[/info] [white]{escape(url)}[/white]\n")
+        result = subprocess.run(
+            ['gallery-dl', '-d', str(output_dir), url],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            new_files = [p for p in output_dir.glob("*") if p.is_file()]
+            if new_files:
+                console.print(f"[success]Downloaded {len(new_files)} image(s) to {output_dir}[/success]")
+                confirm_save(output_dir)
+            else:
+                console.print("[yellow]No images were downloaded.[/yellow]")
+            return
+        console.print("[dim]gallery-dl failed, trying yt-dlp...[/dim]")
+
+    _download_images_ytdlp(url, filename, cookies=cookies)
+
+
+def _download_images_ytdlp(url, filename, cookies=None):
+    """Download images using yt-dlp."""
+    cmd = _get_yt_dlp_cmd()
+    if not cmd:
+        return
+
+    output_dir = _ensure_output_dir(get_save_path('images'))
+    if output_dir is None:
+        return
+    output_template = str(output_dir / f"{filename}_%(id)s.%(ext)s")
+
+    console.print(f"\n[info]Downloading images from:[/info] [white]{escape(url)}[/white]\n")
+
+    args = [*cmd, '-f', 'bestimage/best', '-o', output_template, '--no-playlist']
+    if cookies:
+        args += ['--cookies-from-browser', cookies]
+    args.append(url)
+    result = subprocess.run(args, capture_output=True, text=True)
+
+    if result.returncode == 0:
+        images = [p for p in output_dir.glob(glob_mod.escape(filename) + '_*')
+                  if not p.name.endswith('.part')]
+        if images:
+            total_size = sum(f.stat().st_size for f in images) / (1024 * 1024)
+            console.print(f"[success]Downloaded {len(images)} image(s)[/success]")
+            console.print(f"[dim]Total size: {total_size:.2f} MB[/dim]")
+            console.print(f"[dim]Saved to: {output_dir}[/dim]")
+            confirm_save(output_dir)
+        else:
+            _direct_image_download(url, filename, output_dir)
+    else:
+        console.print("[dim]yt-dlp couldn't extract, trying direct download...[/dim]")
+        _direct_image_download(url, filename, output_dir)
+
+
+def _direct_image_download(url, filename, output_dir):
+    """Direct image download fallback."""
+    if not ensure_pip_module('requests', display_name='requests'):
+        console.print("[red]requests is required for direct download. Install: pip install requests[/red]")
+        return
+    import requests
+
+    ext_match = re.search(r'\.(jpg|jpeg|png|webp|gif|svg|bmp|ico)(\?.*)?$', url.lower())
+    ext = ext_match.group(1) if ext_match else 'jpg'
+
+    console.print("[info]Downloading directly...[/info]")
+    try:
+        resp = requests.get(url, stream=True, timeout=30, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        resp.raise_for_status()
+
+        output_path = output_dir / f"{filename}.{ext}"
+        total = int(resp.headers.get('content-length', 0))
+
+        with Progress(
+            SpinnerColumn("dots"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=bar_width()),
+            DownloadColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("[info]Downloading...[/info]", total=total or 100)
+            with open(output_path, 'wb') as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    if total:
+                        progress.update(task, advance=len(chunk))
+
+        size = output_path.stat().st_size / 1024
+        console.print(f"[dim]Size: {size:.2f} KB[/dim]")
+        confirm_save(output_path)
+    except Exception as e:
+        console.print(f"[red]Download failed: {e}[/red]")
+
+
 def _ask_video_quality(url, filename, cookies=None):
     """Show video quality selection menu."""
 
@@ -1458,4 +1557,23 @@ def _ask_video_quality(url, filename, cookies=None):
     )
 
     height_map = {
-        "1": 2160
+        "1": 2160,
+        "2": 1080,
+        "3": 720,
+        "4": 480,
+        "5": 360,
+        "6": None
+    }
+
+    height = height_map[q_choice]
+
+    _download_with_retry(
+        'video',
+        url,
+        filename,
+        height=height,
+        quality_label=(
+            f"{height}p" if height else 'best'
+        ),
+        cookies=cookies
+    )

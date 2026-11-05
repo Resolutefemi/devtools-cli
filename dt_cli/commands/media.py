@@ -2,7 +2,6 @@ import click
 import subprocess
 import shlex
 import tempfile
-import time
 import re
 import os
 import math
@@ -15,9 +14,7 @@ from ..config import (
     confirm_save,
     ensure_cli_tool,
     ensure_pip_module,
-    IS_TERMUX,
     bar_width,
-    BORDER_ROUNDED,
 )
 
 from rich.panel import Panel
