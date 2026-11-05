@@ -7,6 +7,7 @@ except ImportError:
         print("Install with:  pip install renance-dt")
         sys.exit(1)
 
+from . import __version__
 from .config import console, IS_TERMUX, is_narrow, help_columns
 from rich.panel import Panel
 from rich.table import Table
@@ -57,11 +58,11 @@ def show_help():
     header = Text()
     if narrow:
         header.append("  DEVTOOLS\n", style="bold brand")
-        header.append(f"  v3.2.0  |  {platform}\n", style="dim")
+        header.append(f"  v{__version__}  |  {platform}\n", style="dim")
         header.append("  by Resolutefemi", style="muted")
     else:
         header.append("  R E N A N C E   D E V T O O L S\n", style="bold brand")
-        header.append(f"  v3.2.0  |  {platform}  |  ", style="dim")
+        header.append(f"  v{__version__}  |  {platform}  |  ", style="dim")
         header.append("by Resolutefemi", style="muted")
         header.append("\n  One command to rule them all\n", style="dim")
 
@@ -135,7 +136,7 @@ def about():
     table.add_column(style="info", ratio=1)
     table.add_column(style="white", ratio=2)
     table.add_row("Name", "[bold brand]Renance DevTools (renance-dt)[/bold brand]")
-    table.add_row("Version", "3.2.0")
+    table.add_row("Version", __version__)
     table.add_row("Author", "[white]Resolutefemi[/white]")
     table.add_row("Email", "[info]hello@renance.dev[/info]")
     table.add_row("License", "[success]MIT[/success]")

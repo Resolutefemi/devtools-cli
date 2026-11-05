@@ -178,7 +178,7 @@ def battery():
                     table.add_column(ratio=2)
                     table.add_row("Battery", f"{bar} {pct}%")
                     table.add_row("Status", plugged)
-                    if bat.secsleft > 0:
+                    if 0 < bat.secsleft < 7 * 24 * 3600:
                         hours, mins = divmod(bat.secsleft // 60, 60)
                         table.add_row("Remaining", f"{hours}h {mins}m")
                     live.update(table)

@@ -1,4 +1,4 @@
-import click, time, random, socket, shutil, os, base64
+import click, time, random, socket, shutil
 from ..config import console, bar_width, confirm_save
 from rich.panel import Panel
 from rich.table import Table
@@ -121,4 +121,84 @@ def port_scan(host, start, end):
                 8443: 'HTTPS-Alt', 27017: 'MongoDB',
             }
             for p in sorted(open_ports):
-                table.add_row(str(p), "[green]OPEN[/green]", servi
+                table.add_row(str(p), "[green]OPEN[/green]", services.get(p, 'Unknown'))
+            console.print(table)
+            console.print(f"\n[dim]Found {len(open_ports)} open port(s) out of {total} scanned.[/dim]")
+        else:
+            console.print("[yellow]No open ports found in range.[/yellow]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Scan aborted by user.[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Scan failed: {e}[/red]")
+
+
+@click.command()
+@click.argument('file_path')
+def vault(file_path):
+    """Encrypt or decrypt a file with a password (XOR toggle)"""
+    from pathlib import Path
+    from ..config import get_save_path
+
+    p = Path(file_path)
+    if not p.exists():
+        console.print(f"[red]File not found: {file_path}[/red]")
+        return
+
+    password = click.prompt("Enter vault password", hide_input=True)
+    key = sum(ord(c) for c in password)
+    console.print("[info]Processing vault...[/info]")
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=bar_width()),
+        console=console, transient=True,
+    ) as progress:
+        progress.add_task("[info]Encrypting/Decrypting...[/info]", total=None)
+        content = p.read_bytes()
+        processed = bytes([b ^ (key % 256) for b in content])
+        output = get_save_path('downloads') / f"{p.stem}_vaulted{p.suffix}"
+        output.write_bytes(processed)
+
+    confirm_save(output)
+
+
+@click.command()
+def sniff():
+    """Simulate network packet sniffing (visual hacker feel)"""
+    console.print()
+    console.print(Panel(
+        "[bold red]SNIFFER MODE ACTIVE[/bold red]\n"
+        "[dim]Simulated packet capture for visual effect[/dim]\n"
+        "[dim]Press Ctrl+C to stop[/dim]",
+        border_style="red", box=box.DOUBLE_EDGE
+    ))
+    protocols = ["TCP", "UDP", "HTTP", "HTTPS", "DNS", "SSH", "FTP", "TLS", "QUIC", "ICMP"]
+    flags_list = ["SYN", "ACK", "PSH,ACK", "FIN,ACK", "SYN,ACK", "RST", "URG,PSH"]
+    try:
+        with Live(console=console, refresh_per_second=4, transient=True) as live:
+            packets = []
+            while True:
+                ip = f"{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"
+                proto = random.choice(protocols)
+                size = random.randint(40, 1500)
+                port = random.randint(1, 65535)
+                flag = random.choice(flags_list) if proto in ("TCP", "TLS") else ""
+                ts = time.strftime('%H:%M:%S')
+                color = {
+                    "HTTPS": "green", "SSH": "green", "TLS": "green",
+                    "HTTP": "yellow", "DNS": "cyan", "FTP": "red",
+                }.get(proto, "white")
+                line = f"[dim]{ts}[/dim] [{color}]{proto:<6}[/{color}] {ip}:{port:<6} [dim]{size}B[/dim] {flag}"
+                packets.append(line)
+                if len(packets) > 15:
+                    packets = packets[-15:]
+                output = Text("\n").join(Text(p) for p in packets)
+                live.update(Panel(
+                    output,
+                    title="[bold red]PACKET CAPTURE[/bold red]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                ))
+                time.sleep(random.uniform(0.2, 0.6))
+    except KeyboardInterrupt:
+        console.print("\n[dim]Sniffing stopped.[/dim]")

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..config import (
     console, get_save_path, ask_filename, confirm_save,
-    ensure_cli_tool, ensure_pip_module, bar_width, BORDER_ROUNDED
+    ensure_cli_tool, ensure_pip_module, bar_width
 )
 
 from rich.prompt import Prompt

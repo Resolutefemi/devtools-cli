@@ -14,15 +14,47 @@ jobs:
       url: https://pypi.org/p/renance-dt
     permissions:
       id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Verify tag matches package version
+        run: |
+          python - <<'PY'
+          import os, re, sys, tomllib
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          version = data["project"]["version"]
+          init_version = re.search(
+              r'__version__\s*=\s*"([^"]+)"',
+              Path("dt_cli/__init__.py").read_text(encoding="utf-8"),
+          ).group(1)
+          print(f"tag={tag} pyproject={version} dt_cli.__version__={init_version}")
+          if tag != version or version != init_version:
+              sys.exit(
+                  "Version mismatch: git tag, pyproject.toml and "
+                  "dt_cli/__init__.py must all agree before publishing. "
+                  "PyPI rejects re-uploads of an existing version."
+              )
+          PY
       - name: Install build dependencies
-        run: pip install build
+        run: pip install build twine
+      - name: Compile check
+        run: python -m compileall -q dt_cli
       - name: Build package
         run: python -m build
+      - name: Check distributions
+        run: twine check dist/*
+      - name: Smoke test built wheel
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          /tmp/smoke/bin/dt about
+          /tmp/smoke/bin/python -c "import dt_cli; print(dt_cli.__version__)"
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

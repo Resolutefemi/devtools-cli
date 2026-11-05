@@ -68,7 +68,7 @@ def torch():
     console.print("[info]Toggling flashlight...[/info]")
     try:
         # Check current state
-        result = subprocess.run(['termux-torch', 'on'], capture_output=True, text=True)
+        subprocess.run(['termux-torch', 'on'], capture_output=True, text=True)
         console.print("[success]Torch ON[/success]")
     except FileNotFoundError:
         console.print("[red]termux-api not installed. Run: pkg install termux-api[/red]")
