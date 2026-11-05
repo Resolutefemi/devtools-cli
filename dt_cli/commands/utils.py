@@ -1,13 +1,10 @@
-import click, datetime, urllib.request, json, time, sys, os
+import click, datetime, urllib.request, json, time, os, subprocess
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module, BORDER_ROUNDED
+from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.table import Table
 from rich.prompt import Prompt, IntPrompt
-from rich.text import Text
 from rich.live import Live
-from rich.layout import Layout
 from rich import box
 
 
@@ -54,7 +51,7 @@ def todo(task_text):
     todo_file.parent.mkdir(exist_ok=True)
     with open(todo_file, 'a') as f:
         f.write(f"- [ ] {task_text}\n")
-    console.print(f"[success]Task added to todo list[/success]")
+    console.print("[success]Task added to todo list[/success]")
 
 
 @click.command()
@@ -67,7 +64,7 @@ def note(note_text):
     note_file.parent.mkdir(exist_ok=True)
     with open(note_file, 'a') as f:
         f.write(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {note_text}\n")
-    console.print(f"[success]Note saved[/success]")
+    console.print("[success]Note saved[/success]")
 
 
 @click.command()
@@ -196,7 +193,7 @@ def pomo(minutes):
                     f"  {time_display}\n\n"
                     f"  {bar}\n\n"
                     f"  [dim]{int(progress * 100)}% complete[/dim]\n",
-                    title=f"[brand]POMODORO[/brand]",
+                    title="[brand]POMODORO[/brand]",
                     border_style=border,
                     box=box.ROUNDED,
                 ))
@@ -278,13 +275,10 @@ def paste():
 
     try:
         if system == "Windows":
-            import subprocess
             content = subprocess.run(['powershell', '-command', 'Get-Clipboard'], capture_output=True, text=True).stdout
         elif system == "Darwin":
-            import subprocess
             content = subprocess.run(['pbpaste'], capture_output=True, text=True).stdout
-        elif "TERMUX" in os.environ.get('PREFIX', ''):
-            import subprocess
+        elif 'com.termux' in os.environ.get('PREFIX', ''):
             content = subprocess.run(['termux-clipboard-get'], capture_output=True, text=True).stdout
         else:
             # Try xclip or xsel on Linux

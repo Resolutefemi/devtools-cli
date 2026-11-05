@@ -35,7 +35,6 @@ def ensure_cli_tool(name, pip_name=None, display_name=None):
     if name in _installed_this_session:
         return False
 
-    from rich.progress import Progress, SpinnerColumn, TextColumn
     from rich.panel import Panel
 
     console.print()
@@ -121,7 +120,6 @@ def ensure_pip_module(module_name, pip_name=None, display_name=None):
         return False
 
     from rich.panel import Panel
-    from rich.progress import Progress, SpinnerColumn, TextColumn
 
     console.print()
     console.print(Panel(
@@ -207,14 +205,8 @@ def help_columns():
 
 # ── Re-usable Rich objects ─────────────────────────────────────────
 from rich.panel import Panel
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
-from rich.prompt import Prompt, Confirm
-from rich.live import Live
-from rich.layout import Layout
-from rich.text import Text
-from rich.columns import Columns
-from rich.rule import Rule
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Prompt
 from rich import box
 
 BORDER_ROUNDED = box.ROUNDED
@@ -267,7 +259,6 @@ def confirm_save(path):
 
 def spinner_task(description, func, *args, **kwargs):
     """Run a function with a rich spinner."""
-    from rich.progress import Progress, SpinnerColumn, TextColumn
     with Progress(SpinnerColumn("dots"), TextColumn("[progress.description]{task.description}"), console=console, transient=True) as progress:
         task = progress.add_task(description, total=None)
         result = func(*args, **kwargs)

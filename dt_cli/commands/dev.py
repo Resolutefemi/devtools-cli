@@ -1,7 +1,7 @@
-import click, os
+import click
 from datetime import datetime
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, ensure_pip_module, BORDER_ROUNDED
+from ..config import console, ensure_pip_module
 from rich.panel import Panel
 from rich import box
 
