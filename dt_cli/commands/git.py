@@ -2,8 +2,6 @@ import click, subprocess, os
 from pathlib import Path
 from ..config import console
 from rich.prompt import Prompt, Confirm
-from rich.panel import Panel
-from rich import box
 
 
 def is_git_installed():
@@ -29,11 +27,11 @@ def git_install():
     if os.name == 'nt':
         console.print("[dim]Detecting Windows...[/dim]")
         try:
-            subprocess.run('winget --version', shell=True, capture_output=True, check=True)
+            subprocess.run(['winget', '--version'], capture_output=True, check=True)
             console.print("[info]Installing Git...[/info]")
-            subprocess.run('winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements', shell=True, check=True)
+            subprocess.run(['winget', 'install', '--id', 'Git.Git', '-e', '--source', 'winget', '--accept-source-agreements', '--accept-package-agreements'], check=True)
             console.print("[info]Installing GitHub CLI...[/info]")
-            subprocess.run('winget install --id GitHub.cli -e --source winget --accept-source-agreements --accept-package-agreements', shell=True, check=True)
+            subprocess.run(['winget', 'install', '--id', 'GitHub.cli', '-e', '--source', 'winget', '--accept-source-agreements', '--accept-package-agreements'], check=True)
         except subprocess.CalledProcessError:
             console.print("[red]Winget not found. Install manually from git-scm.com[/red]")
         except Exception as e:

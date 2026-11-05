@@ -1,143 +1,526 @@
-import click, subprocess, shlex, tempfile, time
+import click
+import subprocess
+import shlex
+import tempfile
+import time
+import re
+import os
+import math
 from pathlib import Path
-from ..config import console, get_save_path, ask_filename, confirm_save, ensure_cli_tool, ensure_pip_module, IS_TERMUX, bar_width, BORDER_ROUNDED
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
-from rich.table import Table
-from rich.prompt import Prompt, IntPrompt
-from rich import box
-from rich.live import Live
-from rich.text import Text
 
+from ..config import (
+    console,
+    get_save_path,
+    ask_filename,
+    confirm_save,
+    ensure_cli_tool,
+    ensure_pip_module,
+    IS_TERMUX,
+    bar_width,
+    BORDER_ROUNDED,
+)
+
+from rich.panel import Panel
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    BarColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+from rich.prompt import Prompt
+from rich import box
+
+
+# ─────────────────────────────────────────────────────────────
+# Common helpers
+# ─────────────────────────────────────────────────────────────
 
 def _require_ffmpeg():
-    """Ensure ffmpeg is available, auto-installing if missing."""
-    return ensure_cli_tool('ffmpeg', display_name='ffmpeg')
+    """Ensure ffmpeg is available."""
+    return ensure_cli_tool("ffmpeg", display_name="ffmpeg")
+
+
+def _valid_file(path, label="File"):
+    """Check whether a path points to an existing regular file."""
+    try:
+        p = Path(path).expanduser()
+        if not p.exists() or not p.is_file():
+            console.print(f"[red]{label} not found: {path}[/red]")
+            return None
+        return p.resolve()
+    except (OSError, TypeError, ValueError) as exc:
+        console.print(f"[red]Invalid {label.lower()} path: {exc}[/red]")
+        return None
+
+
+def _prepare_output(category, filename, extension):
+    """Create an output path and ensure its directory exists."""
+    try:
+        directory = Path(get_save_path(category)).expanduser()
+        directory.mkdir(parents=True, exist_ok=True)
+
+        name = str(filename or "").strip()
+        name = Path(name).name
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
+        name = name.strip(" .")
+
+        if not name:
+            name = "output"
+
+        # Empty extension is valid for directory names.
+        if extension:
+            extension = (
+                extension
+                if extension.startswith(".")
+                else f".{extension}"
+            )
+        else:
+            extension = ""
+
+        return directory / f"{name}{extension}"
+
+    except (OSError, TypeError, ValueError) as exc:
+        console.print(
+            f"[red]Could not prepare output directory: {exc}[/red]"
+        )
+        return None
+
+
+def _output_ready(path):
+    """Return True only if a non-empty output file exists."""
+    try:
+        p = Path(path)
+        return p.is_file() and p.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _remove_partial(path):
+    """Remove an incomplete output file, if possible."""
+    try:
+        p = Path(path)
+        if p.exists() and p.is_file():
+            p.unlink()
+    except OSError:
+        pass
+
+
+def _parse_time(value):
+    """Parse HH:MM:SS, MM:SS or seconds into seconds."""
+    value = str(value).strip()
+
+    if not value:
+        raise ValueError("Time cannot be empty.")
+
+    parts = value.split(":")
+
+    if len(parts) not in (1, 2, 3):
+        raise ValueError("Use HH:MM:SS, MM:SS or seconds.")
+
+    try:
+        numbers = [float(part) for part in parts]
+    except ValueError:
+        raise ValueError("Time contains an invalid number.")
+
+    if any(not math.isfinite(n) or n < 0 for n in numbers):
+        raise ValueError("Time values must be finite and non-negative.")
+
+    if len(numbers) == 1:
+        return numbers[0]
+
+    if len(numbers) == 2:
+        minutes, seconds = numbers
+        if seconds >= 60:
+            raise ValueError("Seconds must be less than 60.")
+        return minutes * 60 + seconds
+
+    hours, minutes, seconds = numbers
+
+    if minutes >= 60 or seconds >= 60:
+        raise ValueError("Minutes and seconds must be less than 60.")
+
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _validate_time_range(start, end):
+    """Validate a start/end time range."""
+    try:
+        start_seconds = _parse_time(start)
+        end_seconds = _parse_time(end)
+
+        if end_seconds <= start_seconds:
+            console.print(
+                "[red]End time must be greater than start time.[/red]"
+            )
+            return False
+
+        return True
+
+    except ValueError as exc:
+        console.print(f"[red]Invalid time: {exc}[/red]")
+        return False
+
+
+def _concat_quote(path):
+    """Escape a path for FFmpeg concat demuxer list files."""
+    value = str(Path(path).resolve())
+    value = value.replace("\\", "\\\\")
+    value = value.replace("'", "\\'")
+    value = value.replace("\n", "\\n")
+    value = value.replace("\r", "\\r")
+    return f"file '{value}'\n"
+
+
+def _create_concat_list(files):
+    """Create a temporary FFmpeg concat list."""
+    temp = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".txt",
+        delete=False,
+    )
+
+    list_path = Path(temp.name)
+
+    try:
+        for item in files:
+            temp.write(_concat_quote(item))
+
+        temp.close()
+        return list_path
+
+    except Exception:
+        temp.close()
+        _remove_partial(list_path)
+        raise
+
+
+def _build_atempo_filter(speed):
+    """Build an FFmpeg atempo chain for supported speeds."""
+    filters = []
+
+    while speed > 2.0:
+        filters.append("atempo=2.0")
+        speed /= 2.0
+
+    while speed < 0.5:
+        filters.append("atempo=0.5")
+        speed /= 0.5
+
+    filters.append(f"atempo={speed:.8g}")
+    return ",".join(filters)
+
+
+def _escape_drawtext(value):
+    """Escape user text for FFmpeg drawtext filter."""
+    value = str(value)
+
+    replacements = {
+        "\\": "\\\\",
+        "'": "\\'",
+        ":": "\\:",
+        ",": "\\,",
+        "[": "\\[",
+        "]": "\\]",
+        "%": "\\%",
+        "\n": " ",
+        "\r": " ",
+    }
+
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+
+    return value
 
 
 def _run_ffmpeg_with_progress(cmd, description="Processing..."):
-    """Run ffmpeg with live progress tracking."""
-    process = subprocess.Popen(
-        cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True
-    )
-
+    """Run FFmpeg and track progress without blocking on stdout."""
+    process = None
+    stderr_log = []
     duration = None
-    current_time = None
-    stderr_log = ''
 
-    with Progress(
-        SpinnerColumn("dots"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=bar_width()),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"[info]{description}[/info]", total=100)
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            errors="replace",
+            bufsize=1,
+        )
 
-        while True:
-            line = process.stderr.readline()
-            if not line and process.poll() is not None:
-                break
-            if 'Duration:' in line and duration is None:
+        with Progress(
+            SpinnerColumn("dots"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=bar_width()),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+
+            task = progress.add_task(
+                f"[info]{description}[/info]",
+                total=100,
+            )
+
+            if process.stderr is not None:
+                for line in process.stderr:
+                    if not line:
+                        continue
+
+                    line = line.rstrip()
+                    stderr_log.append(line)
+
+                    if len(stderr_log) > 80:
+                        stderr_log.pop(0)
+
+                    if duration is None and "Duration:" in line:
+                        try:
+                            duration_text = (
+                                line.split("Duration:", 1)[1]
+                                .strip()
+                                .split(",", 1)[0]
+                            )
+                            duration = _parse_time(duration_text)
+                        except (ValueError, IndexError):
+                            duration = None
+
+                    if duration and duration > 0 and "time=" in line:
+                        try:
+                            time_text = (
+                                line.split("time=", 1)[1].split()[0]
+                            )
+                            current_time = _parse_time(time_text)
+
+                            percentage = min(
+                                100,
+                                max(0, current_time / duration * 100),
+                            )
+
+                            progress.update(
+                                task,
+                                completed=percentage,
+                            )
+
+                        except (ValueError, IndexError):
+                            pass
+
+        return_code = process.wait()
+
+        if return_code != 0:
+            console.print("[red]FFmpeg reported an error:[/red]")
+
+            for line in stderr_log[-5:]:
+                if line.strip():
+                    console.print(f"  [dim]{line}[/dim]")
+
+            return False
+
+        return True
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Operation cancelled.[/yellow]")
+
+        if process is not None and process.poll() is None:
+            process.terminate()
+
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+        return False
+
+    except FileNotFoundError:
+        console.print("[red]FFmpeg executable was not found.[/red]")
+        return False
+
+    except OSError as exc:
+        console.print(f"[red]FFmpeg system error: {exc}[/red]")
+        return False
+
+    finally:
+        if process is not None:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+            if process.stderr is not None:
                 try:
-                    h, m, s = line.split('Duration:')[1].strip().split(',')[0].split(':')
-                    duration = int(h) * 3600 + int(m) * 60 + float(s)
-                except Exception:
-                    duration = None
-
-            if 'time=' in line and duration:
-                stderr_log += line
-                try:
-                    time_str = line.split('time=')[1].split(' ')[0]
-                    h, m, s = time_str.split(':')
-                    current_time = int(h) * 3600 + int(m) * 60 + float(s)
-                    if duration > 0:
-                        pct = min(100, (current_time / duration) * 100)
-                        progress.update(task, completed=pct)
-                except Exception:
+                    process.stderr.close()
+                except OSError:
                     pass
 
-    if process.returncode != 0:
-        # Collect remaining stderr for error reporting
-        remaining = process.stderr.read() if process.stderr else ''
-        _last_lines = (stderr_log + remaining).strip().split('\n')
-        # Show last 3 lines of ffmpeg error
-        for line in _last_lines[-3:]:
-            if line.strip():
-                console.print(f"  [dim]{line.strip()}[/dim]")
-    return process.returncode == 0
+
+def _show_saved_file(path, label="File"):
+    """Display output information and ask whether to keep the file."""
+    if not _output_ready(path):
+        console.print(f"[red]{label} creation failed.[/red]")
+        _remove_partial(path)
+        return False
+
+    try:
+        size = Path(path).stat().st_size / (1024 * 1024)
+        console.print(f"[dim]Size: {size:.2f} MB[/dim]")
+        confirm_save(path)
+        return True
+
+    except OSError as exc:
+        console.print(f"[red]Could not access output file: {exc}[/red]")
+        return False
 
 
-@click.command()
-def join():
-    """Join/merge videos together"""
-    if not _require_ffmpeg():
-        return
+def _get_multiple_files(prompt_text):
+    """Read multiple file paths, supporting quoted paths."""
+    raw_input = Prompt.ask(prompt_text).strip()
 
-    console.print()
-    console.print(Panel("[bold brand]JOIN VIDEOS[/bold brand]\n[dim]Merge multiple videos into one[/dim]", border_style="brand", box=box.ROUNDED))
+    if not raw_input:
+        console.print("[red]No files provided.[/red]")
+        return None
 
-    raw_input = Prompt.ask("\n[info]Video files (space-separated)[/info]")
     try:
         files = shlex.split(raw_input)
-    except ValueError:
-        files = raw_input.split()
+    except ValueError as exc:
+        console.print(f"[red]Invalid file list: {exc}[/red]")
+        return None
 
     if not files:
         console.print("[red]No files provided.[/red]")
-        return
+        return None
 
-    for f in files:
-        if not Path(f).exists():
-            console.print(f"[red]File not found: {f}[/red]")
-            return
+    resolved = []
 
-    filename = ask_filename("joined")
-    output = get_save_path('videos') / f"{filename}.mp4"
+    for item in files:
+        path = _valid_file(item)
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-        list_file = Path(f.name)
-        for vid in files:
-            f.write(f"file '{Path(vid).absolute()}'\n")
+        if path is None:
+            return None
+
+        resolved.append(path)
+
+    return resolved
+
+
+def _ask_speed():
+    """Ask for and validate a speed multiplier."""
+    speed = Prompt.ask(
+        "[info]Enter speed (e.g. 1.5)[/info]",
+        default="1.5",
+    )
 
     try:
-        success = _run_ffmpeg_with_progress(
-            ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(list_file),
-             '-c', 'copy', str(output)],
-            "Joining videos..."
-        )
+        value = float(speed)
 
-        if success and output.exists():
-            size = output.stat().st_size / (1024 * 1024)
-            console.print(f"[dim]Total size: {size:.1f} MB[/dim]")
-            confirm_save(output)
-        else:
-            console.print("[red]Failed to join videos. Check that all files have the same codec/parameters.[/red]")
-    except FileNotFoundError:
-        console.print("[red]ffmpeg not found.[/red]")
-    except OSError as e:
-        if "225" in str(e):
-            console.print("[red]Antivirus blocked ffmpeg. Add folder to exclusions.[/red]")
-        else:
-            console.print(f"[red]System Error: {e}[/red]")
-    finally:
-        if list_file.exists():
-            list_file.unlink()
+        if not math.isfinite(value) or value <= 0 or value > 4:
+            console.print(
+                "[red]Speed must be between 0.01 and 4.0.[/red]"
+            )
+            return None
 
+        return value
+
+    except ValueError:
+        console.print("[red]Invalid number.[/red]")
+        return None
+
+
+# ─────────────────────────────────────────────────────────────
+# Join videos
+# ─────────────────────────────────────────────────────────────
 
 @click.command()
-def music():
-    """Extract audio from video"""
+def join():
+    """Join/merge videos together."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]EXTRACT AUDIO[/bold brand]\n[dim]Extract audio track from any video file[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]JOIN VIDEOS[/bold brand]\n"
+            "[dim]Merge multiple videos into one[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    files = _get_multiple_files(
+        "\n[info]Video files (space-separated; quote paths containing spaces)[/info]"
+    )
+
+    if not files:
+        return
+
+    filename = ask_filename("joined")
+    output = _prepare_output("videos", filename, ".mp4")
+
+    if output is None:
+        return
+
+    list_file = None
+
+    try:
+        list_file = _create_concat_list(files)
+
+        success = _run_ffmpeg_with_progress(
+            [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(list_file),
+                "-c", "copy",
+                str(output),
+            ],
+            "Joining videos...",
+        )
+
+        if success and _output_ready(output):
+            _show_saved_file(output, "Joined video")
+        else:
+            _remove_partial(output)
+            console.print(
+                "[red]Failed to join videos. "
+                "Check that the files have compatible codecs and parameters.[/red]"
+            )
+
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Could not create the video list: {exc}[/red]")
+
+    finally:
+        if list_file is not None:
+            _remove_partial(list_file)
+
+
+# ─────────────────────────────────────────────────────────────
+# Extract audio
+# ─────────────────────────────────────────────────────────────
+
+@click.command()
+def music():
+    """Extract audio from video."""
+    if not _require_ffmpeg():
+        return
+
+    console.print()
+    console.print(
+        Panel(
+            "[bold brand]EXTRACT AUDIO[/bold brand]\n"
+            "[dim]Extract audio track from any video file[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
+
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
     console.print("\n[bold]Audio format:[/bold]")
@@ -146,7 +529,12 @@ def music():
     console.print("  [accent]3[/accent]. FLAC (lossless compressed)")
     console.print("  [accent]4[/accent]. AAC  (Apple/default)")
     console.print("  [accent]5[/accent]. OGG  (open source)")
-    fmt = Prompt.ask("[info]Choose format[/info]", choices=["1", "2", "3", "4", "5"], default="1")
+
+    fmt = Prompt.ask(
+        "[info]Choose format[/info]",
+        choices=["1", "2", "3", "4", "5"],
+        default="1",
+    )
 
     fmt_map = {
         "1": (".mp3", ["-vn", "-acodec", "libmp3lame", "-q:a", "2"]),
@@ -157,36 +545,54 @@ def music():
     }
 
     ext, args = fmt_map[fmt]
-    filename = ask_filename(Path(video).stem)
-    output = get_save_path('music') / f"{filename}{ext}"
+    filename = ask_filename(video.stem)
+    output = _prepare_output("music", filename, ext)
 
-    console.print(f"\n[info]Extracting audio from:[/info] [white]{video}[/white]")
+    if output is None:
+        return
 
-    success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video] + args + [str(output)],
-        f"Extracting {ext[1:].upper()} audio..."
+    console.print(
+        f"\n[info]Extracting audio from:[/info] [white]{video}[/white]"
     )
 
-    if success and output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Size: {size:.2f} MB[/dim]")
-        confirm_save(output)
+    success = _run_ffmpeg_with_progress(
+        ["ffmpeg", "-y", "-i", str(video)] + args + [str(output)],
+        f"Extracting {ext[1:].upper()} audio...",
+    )
+
+    if success and _output_ready(output):
+        _show_saved_file(output, "Audio")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to extract audio.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Compress video
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def shrink():
-    """Compress/reduce video file size"""
+    """Compress/reduce video file size."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]COMPRESS VIDEO[/bold brand]\n[dim]Reduce video file size while keeping quality[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]COMPRESS VIDEO[/bold brand]\n"
+            "[dim]Reduce video file size while keeping quality[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
     console.print("\n[bold]Quality preset:[/bold]")
@@ -194,315 +600,708 @@ def shrink():
     console.print("  [accent]2[/accent]. Medium   (720p, good quality)")
     console.print("  [accent]3[/accent]. High     (1080p, best quality)")
     console.print("  [accent]4[/accent]. WhatsApp  (640px, optimized for sharing)")
-    quality = Prompt.ask("[info]Choose quality[/info]", choices=["1", "2", "3", "4"], default="2")
 
-    scales = {'1': '640:-2', '2': '1280:-2', '3': '1920:-2', '4': '640:-2'}
-    crfs = {'1': '32', '2': '28', '3': '23', '4': '30'}
-    labels = {'1': 'Low', '2': 'Medium', '3': 'High', '4': 'WhatsApp'}
-
-    filename = ask_filename(f"{Path(video).stem}_compressed")
-    output = get_save_path('videos') / f"{filename}.mp4"
-
-    console.print(f"\n[info]Compressing to {labels[quality]} quality...[/info]")
-
-    success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video, '-vf', f"scale={scales[quality]}",
-         '-crf', crfs[quality], '-preset', 'fast', str(output)],
-        f"Compressing ({labels[quality]})..."
+    quality = Prompt.ask(
+        "[info]Choose quality[/info]",
+        choices=["1", "2", "3", "4"],
+        default="2",
     )
 
-    if output.exists():
-        orig_size = Path(video).stat().st_size / (1024 * 1024)
-        new_size = output.stat().st_size / (1024 * 1024)
-        reduction = (1 - new_size / orig_size) * 100 if orig_size > 0 else 0
+    scales = {
+        "1": "640:-2",
+        "2": "1280:-2",
+        "3": "1920:-2",
+        "4": "640:-2",
+    }
 
-        table = Table(box=box.ROUNDED, border_style="success", show_header=False, padding=(0, 2))
+    crfs = {
+        "1": "32",
+        "2": "28",
+        "3": "23",
+        "4": "30",
+    }
+
+    labels = {
+        "1": "Low",
+        "2": "Medium",
+        "3": "High",
+        "4": "WhatsApp",
+    }
+
+    filename = ask_filename(f"{video.stem}_compressed")
+    output = _prepare_output("videos", filename, ".mp4")
+
+    if output is None:
+        return
+
+    console.print(
+        f"\n[info]Compressing to {labels[quality]} quality...[/info]"
+    )
+
+    success = _run_ffmpeg_with_progress(
+        [
+            "ffmpeg", "-y",
+            "-i", str(video),
+            "-vf",
+            f"scale={scales[quality]}:force_original_aspect_ratio=decrease",
+            "-c:v", "libx264",
+            "-crf", crfs[quality],
+            "-preset", "fast",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            str(output),
+        ],
+        f"Compressing ({labels[quality]})...",
+    )
+
+    if not success or not _output_ready(output):
+        _remove_partial(output)
+        console.print("[red]Compression failed.[/red]")
+        return
+
+    try:
+        orig_size = video.stat().st_size / (1024 * 1024)
+        new_size = output.stat().st_size / (1024 * 1024)
+
+        reduction = (
+            (1 - new_size / orig_size) * 100
+            if orig_size > 0 else 0
+        )
+
+        table = Table(
+            box=box.ROUNDED,
+            border_style="success",
+            show_header=False,
+            padding=(0, 2),
+        )
+
         table.add_column(style="dim", ratio=1)
         table.add_column(style="white", ratio=2)
+
         table.add_row("Original", f"{orig_size:.1f} MB")
         table.add_row("Compressed", f"{new_size:.1f} MB")
-        table.add_row("Reduction", f"[success]{reduction:.0f}%[/success]")
+        table.add_row(
+            "Reduction",
+            f"[success]{reduction:.0f}%[/success]",
+        )
+
         console.print(table)
         confirm_save(output)
-    else:
-        console.print("[red]Compression failed.[/red]")
 
+    except OSError as exc:
+        console.print(f"[red]Could not compare file sizes: {exc}[/red]")
+
+
+# ─────────────────────────────────────────────────────────────
+# Cut video clip
+# ─────────────────────────────────────────────────────────────
 
 @click.command()
 def clip():
-    """Cut a video clip"""
+    """Cut a video clip."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]CUT VIDEO CLIP[/bold brand]\n[dim]Extract a portion of a video[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]CUT VIDEO CLIP[/bold brand]\n"
+            "[dim]Extract a portion of a video[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
-    start = Prompt.ask("[info]Start time (HH:MM:SS or MM:SS)[/info]", default="00:00:00")
-    end = Prompt.ask("[info]End time (HH:MM:SS or MM:SS)[/info]", default="00:00:30")
+    start = Prompt.ask(
+        "[info]Start time (HH:MM:SS or MM:SS)[/info]",
+        default="00:00:00",
+    )
 
-    filename = ask_filename(f"clip_{Path(video).stem}")
-    output = get_save_path('videos') / f"{filename}.mp4"
+    end = Prompt.ask(
+        "[info]End time (HH:MM:SS or MM:SS)[/info]",
+        default="00:00:30",
+    )
+
+    if not _validate_time_range(start, end):
+        return
+
+    filename = ask_filename(f"clip_{video.stem}")
+    output = _prepare_output("videos", filename, ".mp4")
+
+    if output is None:
+        return
+
+    # Calculate exact clip duration from start and end.
+    duration = _parse_time(end) - _parse_time(start)
 
     console.print(f"\n[info]Cutting from {start} to {end}...[/info]")
 
     success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video, '-ss', start, '-to', end, '-c', 'copy', str(output)],
-        "Cutting clip..."
+        [
+            "ffmpeg", "-y",
+            "-ss", start,
+            "-i", str(video),
+            "-t", str(duration),
+            "-c", "copy",
+            str(output),
+        ],
+        "Cutting clip...",
     )
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
+    if success and _output_ready(output):
         console.print(f"[dim]Duration: {start} to {end}[/dim]")
-        console.print(f"[dim]Size: {size:.1f} MB[/dim]")
-        confirm_save(output)
+        _show_saved_file(output, "Video clip")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to cut clip.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Video to GIF
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def gif():
-    """Convert video to GIF with palette optimization"""
+    """Convert video to GIF with palette optimization."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]VIDEO TO GIF[/bold brand]\n[dim]Create an optimized GIF from any video[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]VIDEO TO GIF[/bold brand]\n"
+            "[dim]Create an optimized GIF from any video[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
-    width = Prompt.ask("[info]Width in pixels[/info]", default="480")
-    fps = Prompt.ask("[info]Frames per second[/info]", default="12")
+    width_text = Prompt.ask(
+        "[info]Width in pixels[/info]",
+        default="480",
+    )
 
-    filename = ask_filename(Path(video).stem)
-    output = get_save_path('images') / f"{filename}.gif"
+    fps_text = Prompt.ask(
+        "[info]Frames per second[/info]",
+        default="12",
+    )
 
-    console.print(f"\n[info]Creating GIF ({width}px, {fps}fps)...[/info]")
+    try:
+        width = int(width_text)
+        fps = int(fps_text)
 
-    with Progress(
-        SpinnerColumn("dots"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=bar_width()),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        progress.add_task("[info]Generating palette...[/info]", total=None)
-        palette_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-        palette_path = palette_file.name
-        palette_file.close()
+        if width < 1 or width > 7680:
+            raise ValueError("Width must be between 1 and 7680.")
 
-        subprocess.run([
-            'ffmpeg', '-y', '-i', video,
-            '-vf', f'fps={fps},scale={width}:-1:flags=lanczos,palettegen',
-            str(palette_path)
-        ], capture_output=True)
+        if fps < 1 or fps > 120:
+            raise ValueError("FPS must be between 1 and 120.")
 
-        progress.add_task("[info]Creating GIF...[/info]", total=None)
-        result = subprocess.run([
-            'ffmpeg', '-y', '-i', video, '-i', palette_path,
-            '-lavfi', f'fps={fps},scale={width}:-1:flags=lanczos [x]; [x][1:v] paletteuse',
-            str(output)
-        ], capture_output=True)
+    except ValueError as exc:
+        console.print(f"[red]Invalid GIF settings: {exc}[/red]")
+        return
 
-        Path(palette_path).unlink(missing_ok=True)
+    filename = ask_filename(video.stem)
+    output = _prepare_output("images", filename, ".gif")
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Size: {size:.2f} MB[/dim]")
-        confirm_save(output)
-    else:
-        console.print("[red]GIF creation failed.[/red]")
+    if output is None:
+        return
 
+    palette_file = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".png",
+            delete=False,
+        ) as temp:
+            palette_file = Path(temp.name)
+
+        palette_filter = (
+            f"fps={fps},"
+            f"scale={width}:-1:flags=lanczos,"
+            "palettegen"
+        )
+
+        palette_success = _run_ffmpeg_with_progress(
+            [
+                "ffmpeg", "-y",
+                "-i", str(video),
+                "-vf", palette_filter,
+                str(palette_file),
+            ],
+            "Generating palette...",
+        )
+
+        if not palette_success or not _output_ready(palette_file):
+            console.print("[red]Could not generate GIF palette.[/red]")
+            return
+
+        gif_filter = (
+            f"fps={fps},"
+            f"scale={width}:-1:flags=lanczos"
+            "[x];[x][1:v]paletteuse"
+        )
+
+        success = _run_ffmpeg_with_progress(
+            [
+                "ffmpeg", "-y",
+                "-i", str(video),
+                "-i", str(palette_file),
+                "-lavfi", gif_filter,
+                "-loop", "0",
+                str(output),
+            ],
+            "Creating GIF...",
+        )
+
+        if success and _output_ready(output):
+            _show_saved_file(output, "GIF")
+        else:
+            _remove_partial(output)
+            console.print("[red]GIF creation failed.[/red]")
+
+    except OSError as exc:
+        console.print(f"[red]GIF creation error: {exc}[/red]")
+
+    finally:
+        if palette_file is not None:
+            _remove_partial(palette_file)
+
+
+# ─────────────────────────────────────────────────────────────
+# Extract frames
+# ─────────────────────────────────────────────────────────────
 
 @click.command()
 def extract():
-    """Extract all frames from a video"""
+    """Extract all frames from a video."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]EXTRACT FRAMES[/bold brand]\n[dim]Extract every frame from a video as images[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]EXTRACT FRAMES[/bold brand]\n"
+            "[dim]Extract every frame from a video as images[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
-    filename = ask_filename(f"{Path(video).stem}_frames")
-    output_dir = get_save_path('images') / filename
-    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = ask_filename(f"{video.stem}_frames")
+
+    # Empty extension creates a folder name without a trailing dot.
+    output_dir = _prepare_output("images", filename, "")
+
+    if output_dir is None:
+        return
+
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        console.print(
+            f"[red]Could not create output folder: {exc}[/red]"
+        )
+        return
 
     success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video, str(output_dir / 'frame_%04d.png')],
-        "Extracting frames..."
+        [
+            "ffmpeg", "-y",
+            "-i", str(video),
+            str(output_dir / "frame_%04d.png"),
+        ],
+        "Extracting frames...",
     )
 
     frames = list(output_dir.glob("frame_*.png"))
-    if frames:
-        console.print(f"[success]Extracted {len(frames)} frames[/success]")
-        console.print(Panel(f"[dim]{output_dir}[/dim]", title="[success]FRAMES[/success]", border_style="success", box=box.ROUNDED))
+
+    if success and frames:
+        console.print(
+            f"[success]Extracted {len(frames)} frames[/success]"
+        )
+
+        console.print(
+            Panel(
+                f"[dim]{output_dir}[/dim]",
+                title="[success]FRAMES[/success]",
+                border_style="success",
+                box=box.ROUNDED,
+            )
+        )
     else:
         console.print("[red]Frame extraction failed.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Compress images
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
-@click.argument('folder', required=False, default=".")
+@click.argument("folder", required=False, default=".")
 def compress(folder):
-    """Compress images in a folder"""
-    if not ensure_pip_module('PIL', pip_name='Pillow', display_name='Pillow'):
+    """Compress images in a folder."""
+    if not ensure_pip_module(
+        "PIL",
+        pip_name="Pillow",
+        display_name="Pillow",
+    ):
         return
-    from PIL import Image
-    target = Path(folder)
+
+    from PIL import Image, ImageOps
+
+    target = Path(folder).expanduser()
 
     console.print()
-    console.print(Panel("[bold brand]COMPRESS IMAGES[/bold brand]\n[dim]Optimize images to reduce file size[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]COMPRESS IMAGES[/bold brand]\n"
+            "[dim]Optimize images to reduce file size[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    if not target.exists():
+    if not target.exists() or not target.is_dir():
         console.print(f"[red]Directory not found: {folder}[/red]")
         return
 
+    ignored_dirs = {
+        "node_modules",
+        ".git",
+        ".dt",
+        "__pycache__",
+        ".venv",
+        "venv",
+    }
+
+    image_extensions = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".bmp",
+    }
+
     image_files = []
-    for img_path in target.rglob('*'):
-        if img_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp', '.bmp']:
-            if not any(d in str(img_path) for d in ['node_modules', '.git', '.dt', '__pycache__']):
-                image_files.append(img_path)
+
+    try:
+        for img_path in target.rglob("*"):
+            if not img_path.is_file():
+                continue
+
+            if img_path.suffix.lower() not in image_extensions:
+                continue
+
+            try:
+                relative_parts = img_path.relative_to(target).parts
+            except ValueError:
+                continue
+
+            if any(part in ignored_dirs for part in relative_parts):
+                continue
+
+            image_files.append(img_path)
+
+    except OSError as exc:
+        console.print(f"[red]Could not scan directory: {exc}[/red]")
+        return
 
     if not image_files:
         console.print("[yellow]No images found to compress.[/yellow]")
         return
 
-    console.print(f"\n[info]Found {len(image_files)} image(s) to compress...[/info]\n")
+    console.print(
+        f"\n[info]Found {len(image_files)} image(s) to compress...[/info]\n"
+    )
 
     total_saved = 0
+    successful = 0
+    failed = 0
+
     with Progress(
         SpinnerColumn("dots"),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(bar_width=bar_width()),
         console=console,
     ) as progress:
-        task = progress.add_task("[info]Compressing...[/info]", total=len(image_files))
+
+        task = progress.add_task(
+            "[info]Compressing images...[/info]",
+            total=len(image_files),
+        )
+
         for img_path in image_files:
+            temp_path = None
+
             try:
-                orig_size = img_path.stat().st_size
-                img = Image.open(img_path)
-                img.save(img_path, optimize=True, quality=85)
-                new_size = img_path.stat().st_size
-                saved = orig_size - new_size
-                if saved > 0:
-                    total_saved += saved
+                original_size = img_path.stat().st_size
+
+                with Image.open(img_path) as source:
+                    image_format = source.format
+
+                    if not image_format:
+                        raise ValueError("Unknown image format.")
+
+                    source.load()
+                    image = ImageOps.exif_transpose(source)
+
+                    if image_format.upper() in ("JPEG", "JPG"):
+                        if image.mode not in ("RGB", "L"):
+                            image = image.convert("RGB")
+
+                    with tempfile.NamedTemporaryFile(
+                        suffix=img_path.suffix,
+                        prefix=".compress_",
+                        dir=str(img_path.parent),
+                        delete=False,
+                    ) as temp:
+                        temp_path = Path(temp.name)
+
+                    save_options = {}
+
+                    if image_format.upper() in ("JPEG", "JPG"):
+                        save_options = {
+                            "quality": 85,
+                            "optimize": True,
+                        }
+
+                    elif image_format.upper() == "PNG":
+                        save_options = {
+                            "optimize": True,
+                        }
+
+                    elif image_format.upper() == "WEBP":
+                        save_options = {
+                            "quality": 85,
+                            "method": 4,
+                        }
+
+                    image.save(
+                        str(temp_path),
+                        format=image_format,
+                        **save_options,
+                    )
+
+                new_size = temp_path.stat().st_size
+
+                if new_size < original_size:
+                    os.replace(str(temp_path), str(img_path))
+                    total_saved += original_size - new_size
+                    successful += 1
+                else:
+                    _remove_partial(temp_path)
+                    successful += 1
+
             except Exception:
-                pass
-            progress.advance(task)
+                failed += 1
 
-    console.print(f"\n[success]Compressed {len(image_files)} images[/success]")
-    console.print(f"[dim]Total space saved: {total_saved / 1024:.1f} KB[/dim]")
+                if temp_path is not None:
+                    _remove_partial(temp_path)
+
+            finally:
+                progress.advance(task)
+
+    console.print(
+        f"\n[success]Processed {successful} image(s) successfully.[/success]"
+    )
+
+    if failed:
+        console.print(f"[yellow]Failed: {failed} image(s)[/yellow]")
+
+    console.print(
+        f"[dim]Total space saved: {total_saved / 1024:.1f} KB[/dim]"
+    )
 
 
-# ── NEW: Audio Editing Commands ────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Trim audio
+# ─────────────────────────────────────────────────────────────
 
 @click.command()
 def trim_audio():
-    """Trim/cut an audio file"""
+    """Trim/cut an audio file."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]TRIM AUDIO[/bold brand]\n[dim]Cut a portion of an audio file[/dim]", border_style="brand", box=box.ROUNDED))
-
-    audio = Prompt.ask("\n[info]Audio file path[/info]")
-    if not Path(audio).exists():
-        console.print("[red]File not found.[/red]")
-        return
-
-    start = Prompt.ask("[info]Start time (MM:SS or HH:MM:SS)[/info]", default="00:00")
-    end = Prompt.ask("[info]End time (MM:SS or HH:MM:SS)[/info]", default="00:30")
-
-    filename = ask_filename(f"trimmed_{Path(audio).stem}")
-    ext = Path(audio).suffix
-    output = get_save_path('music') / f"{filename}{ext}"
-
-    success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', audio, '-ss', start, '-to', end, '-c', 'copy', str(output)],
-        "Trimming audio..."
+    console.print(
+        Panel(
+            "[bold brand]TRIM AUDIO[/bold brand]\n"
+            "[dim]Cut a portion of an audio file[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
     )
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Duration: {start} to {end} | Size: {size:.2f} MB[/dim]")
-        confirm_save(output)
+    audio = _valid_file(
+        Prompt.ask("\n[info]Audio file path[/info]"),
+        "Audio file",
+    )
+
+    if audio is None:
+        return
+
+    start = Prompt.ask(
+        "[info]Start time (MM:SS or HH:MM:SS)[/info]",
+        default="00:00",
+    )
+
+    end = Prompt.ask(
+        "[info]End time (MM:SS or HH:MM:SS)[/info]",
+        default="00:30",
+    )
+
+    if not _validate_time_range(start, end):
+        return
+
+    filename = ask_filename(f"trimmed_{audio.stem}")
+    ext = audio.suffix.lower() or ".mp3"
+    output = _prepare_output("music", filename, ext)
+
+    if output is None:
+        return
+
+    duration = _parse_time(end) - _parse_time(start)
+
+    success = _run_ffmpeg_with_progress(
+        [
+            "ffmpeg", "-y",
+            "-ss", start,
+            "-i", str(audio),
+            "-t", str(duration),
+            "-c", "copy",
+            str(output),
+        ],
+        "Trimming audio...",
+    )
+
+    if success and _output_ready(output):
+        console.print(f"[dim]Duration: {start} to {end}[/dim]")
+        _show_saved_file(output, "Audio")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to trim audio.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Merge audio
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def merge_audio():
-    """Merge/join multiple audio files"""
+    """Merge/join multiple audio files."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]MERGE AUDIO[/bold brand]\n[dim]Combine multiple audio files into one[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]MERGE AUDIO[/bold brand]\n"
+            "[dim]Combine multiple audio files into one[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    raw_input = Prompt.ask("\n[info]Audio files (space-separated)[/info]")
-    try:
-        files = shlex.split(raw_input)
-    except ValueError:
-        files = raw_input.split()
+    files = _get_multiple_files(
+        "\n[info]Audio files (space-separated; quote paths containing spaces)[/info]"
+    )
 
     if not files:
-        console.print("[red]No files provided.[/red]")
         return
 
-    for f in files:
-        if not Path(f).exists():
-            console.print(f"[red]File not found: {f}[/red]")
-            return
-
     filename = ask_filename("merged_audio")
-    output = get_save_path('music') / f"{filename}.mp3"
+    output = _prepare_output("music", filename, ".mp3")
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-        list_file = Path(f.name)
-        for aud in files:
-            f.write(f"file '{Path(aud).absolute()}'\n")
+    if output is None:
+        return
+
+    list_file = None
 
     try:
+        list_file = _create_concat_list(files)
+
         success = _run_ffmpeg_with_progress(
-            ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(list_file),
-             '-acodec', 'libmp3lame', '-q:a', '2', str(output)],
-            "Merging audio files..."
+            [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(list_file),
+                "-vn",
+                "-acodec", "libmp3lame",
+                "-q:a", "2",
+                str(output),
+            ],
+            "Merging audio files...",
         )
 
-        if output.exists():
-            size = output.stat().st_size / (1024 * 1024)
-            console.print(f"[dim]Merged {len(files)} files | Size: {size:.2f} MB[/dim]")
-            confirm_save(output)
+        if success and _output_ready(output):
+            console.print(f"[dim]Merged {len(files)} files[/dim]")
+            _show_saved_file(output, "Merged audio")
         else:
-            console.print("[red]Failed to merge audio. Ensure files have the same format/sample rate.[/red]")
-    finally:
-        if list_file.exists():
-            list_file.unlink()
+            _remove_partial(output)
+            console.print(
+                "[red]Failed to merge audio. "
+                "Check that the files are valid audio files.[/red]"
+            )
 
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Could not merge audio: {exc}[/red]")
+
+    finally:
+        if list_file is not None:
+            _remove_partial(list_file)
+
+
+# ─────────────────────────────────────────────────────────────
+# Audio speed
+# ─────────────────────────────────────────────────────────────
 
 @click.command()
 def audio_speed():
-    """Change the speed of an audio file"""
+    """Change the speed of an audio file."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]AUDIO SPEED CHANGE[/bold brand]\n[dim]Speed up or slow down audio[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]AUDIO SPEED CHANGE[/bold brand]\n"
+            "[dim]Speed up or slow down audio[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    audio = Prompt.ask("\n[info]Audio file path[/info]")
-    if not Path(audio).exists():
-        console.print("[red]File not found.[/red]")
+    audio = _valid_file(
+        Prompt.ask("\n[info]Audio file path[/info]"),
+        "Audio file",
+    )
+
+    if audio is None:
         return
 
     console.print("\n[bold]Speed multiplier:[/bold]")
@@ -510,225 +1309,332 @@ def audio_speed():
     console.print("  [accent]0.75[/accent] - 75% speed")
     console.print("  [accent]1.5[/accent] - 1.5x speed")
     console.print("  [accent]2.0[/accent] - Double speed (fast)")
-    speed = Prompt.ask("[info]Enter speed (e.g. 1.5)[/info]", default="1.5")
 
-    try:
-        speed_val = float(speed)
-        if speed_val <= 0 or speed_val > 4:
-            console.print("[red]Speed must be between 0.01 and 4.0[/red]")
-            return
-    except ValueError:
-        console.print("[red]Invalid number.[/red]")
+    speed_val = _ask_speed()
+
+    if speed_val is None:
         return
 
-    filename = ask_filename(f"{Path(audio).stem}_{speed}x")
-    ext = Path(audio).suffix
-    output = get_save_path('music') / f"{filename}{ext}"
+    filename = ask_filename(f"{audio.stem}_{speed_val}x")
+    ext = audio.suffix.lower() or ".mp3"
+    output = _prepare_output("music", filename, ext)
 
-    # atempo filter range is [0.5, 100.0], for values outside chain filters
-    def build_atempo_filter(val):
-        filters = []
-        while val > 2.0:
-            filters.append("atempo=2.0")
-            val /= 2.0
-        while val < 0.5:
-            filters.append("atempo=0.5")
-            val /= 0.5
-        filters.append(f"atempo={val}")
-        return ",".join(filters)
+    if output is None:
+        return
 
-    atempo_filter = build_atempo_filter(speed_val)
+    atempo_filter = _build_atempo_filter(speed_val)
 
     success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', audio, '-filter:a', atempo_filter, str(output)],
-        f"Changing speed to {speed_val}x..."
+        [
+            "ffmpeg", "-y",
+            "-i", str(audio),
+            "-filter:a", atempo_filter,
+            str(output),
+        ],
+        f"Changing speed to {speed_val}x...",
     )
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Speed: {speed_val}x | Size: {size:.2f} MB[/dim]")
-        confirm_save(output)
+    if success and _output_ready(output):
+        console.print(f"[dim]Speed: {speed_val}x[/dim]")
+        _show_saved_file(output, "Audio")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to change audio speed.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Video speed
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def video_speed():
-    """Change the speed of a video"""
+    """Change the speed of a video."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]VIDEO SPEED CHANGE[/bold brand]\n[dim]Speed up or slow down a video[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]VIDEO SPEED CHANGE[/bold brand]\n"
+            "[dim]Speed up or slow down a video[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
     console.print("\n[bold]Speed multiplier:[/bold]")
     console.print("  [accent]0.5[/accent] - Slow motion")
     console.print("  [accent]1.5[/accent] - 1.5x faster")
     console.print("  [accent]2.0[/accent] - Double speed")
-    speed = Prompt.ask("[info]Enter speed (e.g. 1.5)[/info]", default="1.5")
 
-    try:
-        speed_val = float(speed)
-        if speed_val <= 0 or speed_val > 4:
-            console.print("[red]Speed must be between 0.01 and 4.0[/red]")
-            return
-    except ValueError:
-        console.print("[red]Invalid number.[/red]")
+    speed_val = _ask_speed()
+
+    if speed_val is None:
         return
 
-    filename = ask_filename(f"{Path(video).stem}_{speed}x")
-    output = get_save_path('videos') / f"{filename}.mp4"
+    filename = ask_filename(f"{video.stem}_{speed_val}x")
+    output = _prepare_output("videos", filename, ".mp4")
 
-    # Both video and audio filters
-    v_filter = f"setpts={1/speed_val}*PTS"
+    if output is None:
+        return
 
-    def build_atempo(val):
-        filters = []
-        while val > 2.0:
-            filters.append("atempo=2.0")
-            val /= 2.0
-        while val < 0.5:
-            filters.append("atempo=0.5")
-            val /= 0.5
-        filters.append(f"atempo={val}")
-        return ",".join(filters)
-
-    a_filter = build_atempo(speed_val)
+    video_filter = f"setpts={1 / speed_val:.8g}*PTS"
+    audio_filter = _build_atempo_filter(speed_val)
 
     success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video,
-         '-filter:v', v_filter, '-filter:a', a_filter,
-         '-preset', 'fast', str(output)],
-        f"Changing video speed to {speed_val}x..."
+        [
+            "ffmpeg", "-y",
+            "-i", str(video),
+            "-map", "0:v:0",
+            "-map", "0:a?",
+            "-filter:v", video_filter,
+            "-filter:a", audio_filter,
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-c:a", "aac",
+            str(output),
+        ],
+        f"Changing video speed to {speed_val}x...",
     )
 
-    if output.exists():
-        orig_size = Path(video).stat().st_size / (1024 * 1024)
-        new_size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Speed: {speed_val}x | Size: {new_size:.1f} MB (was {orig_size:.1f} MB)[/dim]")
+    if success and _output_ready(output):
+        try:
+            orig_size = video.stat().st_size / (1024 * 1024)
+            new_size = output.stat().st_size / (1024 * 1024)
+
+            console.print(
+                f"[dim]Speed: {speed_val}x | "
+                f"Size: {new_size:.1f} MB "
+                f"(was {orig_size:.1f} MB)[/dim]"
+            )
+        except OSError:
+            pass
+
         confirm_save(output)
+
     else:
+        _remove_partial(output)
         console.print("[red]Failed to change video speed.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Reverse video
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def reverse_video():
-    """Reverse a video (play backwards)"""
+    """Reverse a video (play backwards)."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]REVERSE VIDEO[/bold brand]\n[dim]Play a video in reverse[/dim]", border_style="brand", box=box.ROUNDED))
-
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
-        return
-
-    filename = ask_filename(f"reversed_{Path(video).stem}")
-    output = get_save_path('videos') / f"{filename}.mp4"
-
-    success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video, '-vf', 'reverse', '-af', 'areverse',
-         '-preset', 'fast', str(output)],
-        "Reversing video..."
+    console.print(
+        Panel(
+            "[bold brand]REVERSE VIDEO[/bold brand]\n"
+            "[dim]Play a video in reverse[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
     )
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Size: {size:.1f} MB[/dim]")
-        confirm_save(output)
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
+        return
+
+    filename = ask_filename(f"reversed_{video.stem}")
+    output = _prepare_output("videos", filename, ".mp4")
+
+    if output is None:
+        return
+
+    success = _run_ffmpeg_with_progress(
+        [
+            "ffmpeg", "-y",
+            "-i", str(video),
+            "-map", "0:v:0",
+            "-map", "0:a?",
+            "-vf", "reverse",
+            "-af", "areverse",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-c:a", "aac",
+            str(output),
+        ],
+        "Reversing video...",
+    )
+
+    if success and _output_ready(output):
+        _show_saved_file(output, "Reversed video")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to reverse video.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Add audio to video
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def add_audio():
-    """Add/replace audio track on a video"""
+    """Add/replace audio track on a video."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]ADD AUDIO TO VIDEO[/bold brand]\n[dim]Add or replace the audio track of a video[/dim]", border_style="brand", box=box.ROUNDED))
-
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]Video not found.[/red]")
-        return
-
-    audio = Prompt.ask("[info]Audio file path[/info]")
-    if not Path(audio).exists():
-        console.print("[red]Audio not found.[/red]")
-        return
-
-    filename = ask_filename(f"{Path(video).stem}_with_audio")
-    output = get_save_path('videos') / f"{filename}.mp4"
-
-    success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video, '-i', audio,
-         '-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0',
-         '-shortest', str(output)],
-        "Adding audio to video..."
+    console.print(
+        Panel(
+            "[bold brand]ADD AUDIO TO VIDEO[/bold brand]\n"
+            "[dim]Add or replace the audio track of a video[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
     )
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Size: {size:.1f} MB[/dim]")
-        confirm_save(output)
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
+        return
+
+    audio = _valid_file(
+        Prompt.ask("[info]Audio file path[/info]"),
+        "Audio file",
+    )
+
+    if audio is None:
+        return
+
+    filename = ask_filename(f"{video.stem}_with_audio")
+    output = _prepare_output("videos", filename, ".mp4")
+
+    if output is None:
+        return
+
+    success = _run_ffmpeg_with_progress(
+        [
+            "ffmpeg", "-y",
+            "-i", str(video),
+            "-i", str(audio),
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-shortest",
+            str(output),
+        ],
+        "Adding audio to video...",
+    )
+
+    if success and _output_ready(output):
+        _show_saved_file(output, "Video")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to add audio.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Mute video
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def mute_video():
-    """Remove audio from a video (mute)"""
+    """Remove audio from a video (mute)."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]MUTE VIDEO[/bold brand]\n[dim]Remove the audio track from a video[/dim]", border_style="brand", box=box.ROUNDED))
-
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
-        return
-
-    filename = ask_filename(f"muted_{Path(video).stem}")
-    output = get_save_path('videos') / f"{filename}.mp4"
-
-    success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video, '-an', '-c:v', 'copy', str(output)],
-        "Removing audio..."
+    console.print(
+        Panel(
+            "[bold brand]MUTE VIDEO[/bold brand]\n"
+            "[dim]Remove the audio track from a video[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
     )
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Size: {size:.1f} MB (muted)[/dim]")
-        confirm_save(output)
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
+        return
+
+    filename = ask_filename(f"muted_{video.stem}")
+    output = _prepare_output("videos", filename, ".mp4")
+
+    if output is None:
+        return
+
+    success = _run_ffmpeg_with_progress(
+        [
+            "ffmpeg", "-y",
+            "-i", str(video),
+            "-map", "0:v:0",
+            "-an",
+            "-c:v", "copy",
+            str(output),
+        ],
+        "Removing audio...",
+    )
+
+    if success and _output_ready(output):
+        _show_saved_file(output, "Muted video")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to mute video.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Watermark
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def watermark():
-    """Add a text watermark to a video"""
+    """Add a text watermark to a video."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]ADD WATERMARK[/bold brand]\n[dim]Add a text watermark to your video[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]ADD WATERMARK[/bold brand]\n"
+            "[dim]Add a text watermark to your video[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
-    text = Prompt.ask("[info]Watermark text[/info]", default="DT CLI")
+    watermark_text = Prompt.ask(
+        "[info]Watermark text[/info]",
+        default="DT CLI",
+    ).strip()
+
+    if not watermark_text:
+        console.print("[red]Watermark text cannot be empty.[/red]")
+        return
 
     console.print("\n[bold]Position:[/bold]")
     console.print("  [accent]1[/accent]. Top-Left")
@@ -736,196 +1642,414 @@ def watermark():
     console.print("  [accent]3[/accent]. Bottom-Left")
     console.print("  [accent]4[/accent]. Bottom-Right")
     console.print("  [accent]5[/accent]. Center")
-    pos = Prompt.ask("[info]Position[/info]", choices=["1", "2", "3", "4", "5"], default="4")
 
-    positions = {
-        "1": "10:10", "2": "w-tw-10:10", "3": "10:h-th-10", "4": "w-tw-10:h-th-10", "5": "(w-tw)/2:(h-th)/2"
-    }
-
-    filename = ask_filename(f"watermarked_{Path(video).stem}")
-    output = get_save_path('videos') / f"{filename}.mp4"
-
-    # Find a font file (required on Termux/Android, good practice everywhere)
-    font_file = None
-    font_paths = [
-        '/system/fonts/DroidSans.ttf',
-        '/system/fonts/Roboto-Regular.ttf',
-        '/system/fonts/NotoSans-Regular.ttf',
-        '/system/fonts/NotoSansCJK-Regular.ttc',
-    ]
-    for fp in font_paths:
-        if Path(fp).exists():
-            font_file = fp
-            break
-
-    # Build drawtext filter with separate x and y
-    pos_str = positions[pos]
-    pos_x, pos_y = pos_str.split(':', 1)
-
-    if font_file:
-        filter_str = f"drawtext=fontfile={font_file}:text='{text}':fontsize=24:fontcolor=white@0.7:borderw=1:bordercolor=black@0.5:x={pos_x}:y={pos_y}"
-    else:
-        filter_str = f"drawtext=text='{text}':fontsize=24:fontcolor=white@0.7:borderw=1:bordercolor=black@0.5:x={pos_x}:y={pos_y}"
-
-    success = _run_ffmpeg_with_progress(
-        ['ffmpeg', '-y', '-i', video, '-vf', filter_str,
-         '-c:a', 'copy', '-preset', 'fast', str(output)],
-        "Adding watermark..."
+    pos = Prompt.ask(
+        "[info]Position[/info]",
+        choices=["1", "2", "3", "4", "5"],
+        default="4",
     )
 
-    if output.exists():
-        size = output.stat().st_size / (1024 * 1024)
-        console.print(f"[dim]Watermark: '{text}' | Size: {size:.1f} MB[/dim]")
-        confirm_save(output)
+    positions = {
+        "1": ("10", "10"),
+        "2": ("w-tw-10", "10"),
+        "3": ("10", "h-th-10"),
+        "4": ("w-tw-10", "h-th-10"),
+        "5": ("(w-tw)/2", "(h-th)/2"),
+    }
+
+    filename = ask_filename(f"watermarked_{video.stem}")
+    output = _prepare_output("videos", filename, ".mp4")
+
+    if output is None:
+        return
+
+    font_paths = [
+        "/system/fonts/DroidSans.ttf",
+        "/system/fonts/Roboto-Regular.ttf",
+        "/system/fonts/NotoSans-Regular.ttf",
+        "/system/fonts/NotoSansCJK-Regular.ttc",
+    ]
+
+    font_file = None
+
+    for font_path in font_paths:
+        if Path(font_path).is_file():
+            font_file = font_path
+            break
+
+    pos_x, pos_y = positions[pos]
+    safe_text = _escape_drawtext(watermark_text)
+
+    filter_parts = []
+
+    if font_file:
+        safe_font = _escape_drawtext(font_file)
+        filter_parts.append(f"fontfile='{safe_font}'")
+
+    filter_parts.extend([
+        f"text='{safe_text}'",
+        "fontsize=24",
+        "fontcolor=white@0.7",
+        "borderw=1",
+        "bordercolor=black@0.5",
+        f"x={pos_x}",
+        f"y={pos_y}",
+    ])
+
+    filter_str = "drawtext=" + ":".join(filter_parts)
+
+    success = _run_ffmpeg_with_progress(
+        [
+            "ffmpeg", "-y",
+            "-i", str(video),
+            "-vf", filter_str,
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-c:a", "copy",
+            str(output),
+        ],
+        "Adding watermark...",
+    )
+
+    if success and _output_ready(output):
+        console.print(f"[dim]Watermark: '{watermark_text}'[/dim]")
+        _show_saved_file(output, "Watermarked video")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to add watermark.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Video thumbnail
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def thumbnail():
-    """Extract a thumbnail/poster from a video"""
+    """Extract a thumbnail/poster from a video."""
     if not _require_ffmpeg():
         return
 
     console.print()
-    console.print(Panel("[bold brand]VIDEO THUMBNAIL[/bold brand]\n[dim]Extract a high-quality thumbnail from any video[/dim]", border_style="brand", box=box.ROUNDED))
+    console.print(
+        Panel(
+            "[bold brand]VIDEO THUMBNAIL[/bold brand]\n"
+            "[dim]Extract a high-quality thumbnail from any video[/dim]",
+            border_style="brand",
+            box=box.ROUNDED,
+        )
+    )
 
-    video = Prompt.ask("\n[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
+    video = _valid_file(
+        Prompt.ask("\n[info]Video file path[/info]"),
+        "Video file",
+    )
+
+    if video is None:
         return
 
-    timestamp = Prompt.ask("[info]Timestamp (HH:MM:SS)[/info]", default="00:00:05")
+    timestamp = Prompt.ask(
+        "[info]Timestamp (HH:MM:SS)[/info]",
+        default="00:00:05",
+    )
 
-    filename = ask_filename(f"thumb_{Path(video).stem}")
-    output = get_save_path('images') / f"{filename}.jpg"
+    try:
+        _parse_time(timestamp)
+    except ValueError as exc:
+        console.print(f"[red]Invalid timestamp: {exc}[/red]")
+        return
 
-    with Progress(
-        SpinnerColumn("dots"),
-        TextColumn("[progress.description]{task.description}"),
-        console=console, transient=True,
-    ) as progress:
-        progress.add_task("[info]Extracting thumbnail...[/info]", total=None)
-        result = subprocess.run([
-            'ffmpeg', '-y', '-ss', timestamp, '-i', video,
-            '-vframes', '1', '-q:v', '2', str(output)
-        ], capture_output=True, text=True)
+    filename = ask_filename(f"thumb_{video.stem}")
+    output = _prepare_output("images", filename, ".jpg")
 
-    if output.exists():
-        size = output.stat().st_size / 1024
-        console.print(f"[dim]Size: {size:.2f} KB[/dim]")
-        confirm_save(output)
+    if output is None:
+        return
+
+    success = _run_ffmpeg_with_progress(
+        [
+            "ffmpeg", "-y",
+            "-ss", timestamp,
+            "-i", str(video),
+            "-frames:v", "1",
+            "-q:v", "2",
+            str(output),
+        ],
+        "Extracting thumbnail...",
+    )
+
+    if success and _output_ready(output):
+        try:
+            size = output.stat().st_size / 1024
+            console.print(f"[dim]Size: {size:.2f} KB[/dim]")
+            confirm_save(output)
+        except OSError as exc:
+            console.print(f"[red]Could not read thumbnail: {exc}[/red]")
     else:
+        _remove_partial(output)
         console.print("[red]Failed to extract thumbnail.[/red]")
 
 
+# ─────────────────────────────────────────────────────────────
+# Audio information
+# ─────────────────────────────────────────────────────────────
+
 @click.command()
 def audio_info():
-    """Get detailed info about an audio file"""
+    """Get detailed info about an audio file."""
     if not _require_ffmpeg():
         return
-    if not ensure_cli_tool('ffprobe', display_name='ffprobe'):
+
+    if not ensure_cli_tool("ffprobe", display_name="ffprobe"):
         return
 
     console.print()
-    audio = Prompt.ask("[info]Audio file path[/info]")
-    if not Path(audio).exists():
-        console.print("[red]File not found.[/red]")
-        return
 
-    result = subprocess.run(
-        ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', audio],
-        capture_output=True, text=True
+    audio = _valid_file(
+        Prompt.ask("[info]Audio file path[/info]"),
+        "Audio file",
     )
 
+    if audio is None:
+        return
+
     try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-print_format", "json",
+                "-show_format",
+                "-show_streams",
+                str(audio),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode != 0:
+            console.print("[red]FFprobe could not read this file.[/red]")
+
+            if result.stderr:
+                console.print(
+                    f"[dim]{result.stderr.strip()[-500:]}[/dim]"
+                )
+
+            return
+
         import json
         data = json.loads(result.stdout)
 
-        # Audio stream info
         audio_stream = None
-        for stream in data.get('streams', []):
-            if stream.get('codec_type') == 'audio':
+
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "audio":
                 audio_stream = stream
                 break
 
-        table = Table(box=box.ROUNDED, border_style="accent", show_header=False, padding=(0, 2))
+        if audio_stream is None:
+            console.print(
+                "[yellow]No audio stream found in this file.[/yellow]"
+            )
+            return
+
+        table = Table(
+            box=box.ROUNDED,
+            border_style="accent",
+            show_header=False,
+            padding=(0, 2),
+        )
+
         table.add_column(style="dim", ratio=1)
         table.add_column(style="white", ratio=2)
 
-        fmt = data.get('format', {})
-        table.add_row("File", Path(audio).name)
-        table.add_row("Size", f"{int(fmt.get('size', 0)) / (1024*1024):.2f} MB")
-        table.add_row("Duration", f"{float(fmt.get('duration', 0)):.1f} seconds")
+        fmt = data.get("format", {})
 
-        if audio_stream:
-            table.add_row("Codec", audio_stream.get('codec_name', 'N/A'))
-            table.add_row("Sample Rate", f"{int(audio_stream.get('sample_rate', 0))} Hz")
-            table.add_row("Channels", str(audio_stream.get('channels', 'N/A')))
-            table.add_row("Bit Rate", f"{int(audio_stream.get('bit_rate', 0)) // 1000} kbps")
+        try:
+            file_size = int(fmt.get("size", audio.stat().st_size))
+        except (TypeError, ValueError, OSError):
+            file_size = audio.stat().st_size
+
+        try:
+            duration = float(fmt.get("duration", 0))
+        except (TypeError, ValueError):
+            duration = 0
+
+        table.add_row("File", audio.name)
+        table.add_row("Size", f"{file_size / (1024 * 1024):.2f} MB")
+        table.add_row("Duration", f"{duration:.1f} seconds")
+        table.add_row("Codec", audio_stream.get("codec_name", "N/A"))
+
+        try:
+            sample_rate = int(audio_stream.get("sample_rate", 0))
+            table.add_row("Sample Rate", f"{sample_rate} Hz")
+        except (TypeError, ValueError):
+            table.add_row("Sample Rate", "N/A")
+
+        table.add_row(
+            "Channels",
+            str(audio_stream.get("channels", "N/A")),
+        )
+
+        try:
+            bitrate = int(audio_stream.get("bit_rate", 0)) // 1000
+            table.add_row("Bit Rate", f"{bitrate} kbps")
+        except (TypeError, ValueError):
+            table.add_row("Bit Rate", "N/A")
 
         console.print(table)
-    except Exception as e:
-        console.print(f"[red]Could not read audio info: {e}[/red]")
 
+    except subprocess.TimeoutExpired:
+        console.print("[red]FFprobe timed out.[/red]")
+
+    except (OSError, ValueError, KeyError) as exc:
+        console.print(f"[red]Could not read audio info: {exc}[/red]")
+
+
+# ─────────────────────────────────────────────────────────────
+# Video information
+# ─────────────────────────────────────────────────────────────
 
 @click.command()
 def video_info():
-    """Get detailed info about a video file"""
+    """Get detailed info about a video file."""
     if not _require_ffmpeg():
         return
-    if not ensure_cli_tool('ffprobe', display_name='ffprobe'):
+
+    if not ensure_cli_tool("ffprobe", display_name="ffprobe"):
         return
 
     console.print()
-    video = Prompt.ask("[info]Video file path[/info]")
-    if not Path(video).exists():
-        console.print("[red]File not found.[/red]")
-        return
 
-    result = subprocess.run(
-        ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', video],
-        capture_output=True, text=True
+    video = _valid_file(
+        Prompt.ask("[info]Video file path[/info]"),
+        "Video file",
     )
 
+    if video is None:
+        return
+
     try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-print_format", "json",
+                "-show_format",
+                "-show_streams",
+                str(video),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode != 0:
+            console.print("[red]FFprobe could not read this file.[/red]")
+
+            if result.stderr:
+                console.print(
+                    f"[dim]{result.stderr.strip()[-500:]}[/dim]"
+                )
+
+            return
+
         import json
         data = json.loads(result.stdout)
 
         video_stream = None
         audio_stream = None
-        for stream in data.get('streams', []):
-            if stream.get('codec_type') == 'video' and video_stream is None:
+
+        for stream in data.get("streams", []):
+            if (
+                stream.get("codec_type") == "video"
+                and video_stream is None
+            ):
                 video_stream = stream
-            elif stream.get('codec_type') == 'audio' and audio_stream is None:
+
+            elif (
+                stream.get("codec_type") == "audio"
+                and audio_stream is None
+            ):
                 audio_stream = stream
 
-        table = Table(box=box.ROUNDED, border_style="accent", show_header=False, padding=(0, 2))
+        if video_stream is None:
+            console.print(
+                "[yellow]No video stream found in this file.[/yellow]"
+            )
+            return
+
+        table = Table(
+            box=box.ROUNDED,
+            border_style="accent",
+            show_header=False,
+            padding=(0, 2),
+        )
+
         table.add_column(style="dim", ratio=1)
         table.add_column(style="white", ratio=2)
 
-        fmt = data.get('format', {})
-        table.add_row("File", Path(video).name)
-        table.add_row("Size", f"{int(fmt.get('size', 0)) / (1024*1024):.2f} MB")
-        table.add_row("Duration", f"{float(fmt.get('duration', 0)):.1f} seconds")
+        fmt = data.get("format", {})
 
-        if video_stream:
-            w = video_stream.get('width', '?')
-            h = video_stream.get('height', '?')
-            table.add_row("Resolution", f"{w}x{h}")
-            table.add_row("Video Codec", video_stream.get('codec_name', 'N/A'))
-            fps = video_stream.get('r_frame_rate', '0/1')
-            try:
-                num, den = fps.split('/')
-                fps_val = float(num) / float(den)
-                table.add_row("FPS", f"{fps_val:.1f}")
-            except Exception:
-                table.add_row("FPS", fps)
+        try:
+            file_size = int(fmt.get("size", video.stat().st_size))
+        except (TypeError, ValueError, OSError):
+            file_size = video.stat().st_size
+
+        try:
+            duration = float(fmt.get("duration", 0))
+        except (TypeError, ValueError):
+            duration = 0
+
+        table.add_row("File", video.name)
+        table.add_row("Size", f"{file_size / (1024 * 1024):.2f} MB")
+        table.add_row("Duration", f"{duration:.1f} seconds")
+
+        width = video_stream.get("width", "?")
+        height = video_stream.get("height", "?")
+
+        table.add_row("Resolution", f"{width}x{height}")
+        table.add_row(
+            "Video Codec",
+            video_stream.get("codec_name", "N/A"),
+        )
+
+        fps = (
+            video_stream.get("avg_frame_rate")
+            or video_stream.get("r_frame_rate", "0/1")
+        )
+
+        try:
+            numerator, denominator = fps.split("/", 1)
+            denominator = float(denominator)
+
+            if denominator == 0:
+                raise ValueError("Invalid FPS denominator.")
+
+            fps_value = float(numerator) / denominator
+            table.add_row("FPS", f"{fps_value:.2f}")
+
+        except (ValueError, TypeError, ZeroDivisionError):
+            table.add_row("FPS", str(fps))
 
         if audio_stream:
-            table.add_row("Audio Codec", audio_stream.get('codec_name', 'N/A'))
-            table.add_row("Sample Rate", f"{int(audio_stream.get('sample_rate', 0))} Hz")
+            table.add_row(
+                "Audio Codec",
+                audio_stream.get("codec_name", "N/A"),
+            )
+
+            try:
+                sample_rate = int(audio_stream.get("sample_rate", 0))
+                table.add_row("Sample Rate", f"{sample_rate} Hz")
+            except (TypeError, ValueError):
+                table.add_row("Sample Rate", "N/A")
+
+        else:
+            table.add_row("Audio", "No audio stream")
 
         console.print(table)
-    except Exception as e:
-        console.print(f"[red]Could not read video info: {e}[/red]")
+
+    except subprocess.TimeoutExpired:
+        console.print("[red]FFprobe timed out.[/red]")
+
+    except (OSError, ValueError, KeyError) as exc:
+        console.print(f"[red]Could not read video info: {exc}[/red]")

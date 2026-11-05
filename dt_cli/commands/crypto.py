@@ -1,4 +1,4 @@
-import click, random, string, hashlib, base64
+import click, secrets, string, hashlib, base64
 from ..config import console
 from rich.panel import Panel
 from rich.table import Table
@@ -10,7 +10,7 @@ from rich import box
 def passgen(length):
     """Generate a strong password"""
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
-    pwd = ''.join(random.choice(chars) for _ in range(length))
+    pwd = ''.join(secrets.choice(chars) for _ in range(length))
     console.print(Panel(pwd, title="[success]GENERATED PASSWORD[/success]", border_style="success", box=box.ROUNDED))
 
 

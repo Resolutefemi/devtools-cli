@@ -1,11 +1,11 @@
-import click, subprocess, socket, time, threading, random, math
-from ..config import console, bar_width, BORDER_ROUNDED, ensure_pip_module
+import click, subprocess, socket, time, threading, random
+from ..config import console, bar_width, ensure_pip_module
 from rich.panel import Panel
 from rich.table import Table
 from rich.layout import Layout
 from rich.text import Text
 from rich.live import Live
-from rich.progress import Progress
+from rich.progress import Progress, TextColumn, BarColumn
 from rich import box
 
 
@@ -364,12 +364,12 @@ def speed():
 
             # Body
             body_text = Text()
-            body_text.append(f"\n  DOWNLOAD\n", style="bold")
+            body_text.append("\n  DOWNLOAD\n", style="bold")
             body_text.append(f"  {_make_speed_bar(simulated_dl)}  ", style="")
             body_text.append(f"[bold success]{simulated_dl:>7.2f}[/bold success] [dim]Mbps[/dim]")
 
             if phase in ("upload",):
-                body_text.append(f"\n\n  UPLOAD\n", style="bold")
+                body_text.append("\n\n  UPLOAD\n", style="bold")
                 body_text.append(f"  {_make_speed_bar(simulated_ul)}  ", style="")
                 body_text.append(f"[bold info]{simulated_ul:>7.2f}[/bold info] [dim]Mbps[/dim]")
 
@@ -399,7 +399,7 @@ def speed():
                 show_ul = max(0.1, show_ul)
 
                 body_text = Text()
-                body_text.append(f"\n  DOWNLOAD\n", style="bold")
+                body_text.append("\n  DOWNLOAD\n", style="bold")
                 body_text.append(f"  {_make_speed_bar(show_dl)}  ", style="")
                 body_text.append(f"[bold success]{show_dl:>7.2f}[/bold success] [dim]Mbps[/dim]\n\n")
                 body_text.append("  UPLOAD\n", style="bold")
